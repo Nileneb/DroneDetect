@@ -44,15 +44,36 @@ public class FusionMapRenderer : MonoBehaviour
     [Tooltip("Prefab fuer Anomalie-Marker (auffaelliger, groesser)")]
     public GameObject anomalyPrefab;
 
-    [Header("Colors")]
-    public Color osmColor = new Color(0.8f, 0.8f, 0.8f, 0.6f);
+    [Header("Colors – Landmark Types")]
+    [Tooltip("Gebaeude (building)")]
+    public Color buildingColor = new Color(0.4f, 0.6f, 1.0f, 0.8f);   // Blau
+    [Tooltip("Strassen (road, highway)")]
+    public Color roadColor = new Color(0.7f, 0.7f, 0.7f, 0.7f);       // Grau
+    [Tooltip("Parks / Gruenflaechen (park, garden, grass)")]
+    public Color parkColor = new Color(0.2f, 0.8f, 0.2f, 0.7f);       // Gruen
+    [Tooltip("Wasser (water, river, lake)")]
+    public Color waterColor = new Color(0.1f, 0.4f, 0.9f, 0.7f);      // Dunkelblau
+    [Tooltip("Schienen / Bahn (rail, railway)")]
+    public Color railColor = new Color(0.9f, 0.6f, 0.1f, 0.7f);       // Orange
+    [Tooltip("Fallback fuer unbekannte OSM-Labels")]
+    public Color osmFallbackColor = new Color(0.8f, 0.8f, 0.8f, 0.6f);
     public Color wifiColor = new Color(0.2f, 0.8f, 0.2f, 0.8f);
     public Color anomalyColor = new Color(1.0f, 0.1f, 0.1f, 1.0f);
     public Color defaultColor = new Color(0.6f, 0.6f, 0.6f, 0.5f);
 
-    [Header("Sizes")]
-    [Tooltip("Skalierung normaler Punkte")]
+    [Header("Sizes – Landmark Types")]
+    [Tooltip("Skalierung normaler Punkte (Fallback)")]
     public float pointScale = 0.15f;
+    [Tooltip("Skalierung fuer Gebaeude")]
+    public float buildingScale = 0.25f;
+    [Tooltip("Skalierung fuer Strassen")]
+    public float roadScale = 0.10f;
+    [Tooltip("Skalierung fuer Parks")]
+    public float parkScale = 0.20f;
+    [Tooltip("Skalierung fuer Wasser")]
+    public float waterScale = 0.18f;
+    [Tooltip("Skalierung fuer Schienen")]
+    public float railScale = 0.12f;
 
     [Tooltip("Skalierung von Anomalie-Markern")]
     public float anomalyScale = 0.4f;
@@ -293,7 +314,21 @@ public class FusionMapRenderer : MonoBehaviour
         if (map == null || map.points == null) return;
 
         if (logUpdates)
+        {
             Debug.Log($"[FusionMap] Received {map.n_voxels} voxels, {map.points.Count} points");
+
+            // Debug: Erste 5 Positionen + Labels loggen (Landmark-Differenzierung pruefen)
+            int debugCount = Mathf.Min(5, map.points.Count);
+            for (int d = 0; d < debugCount; d++)
+            {
+                var dp = map.points[d];
+                string posStr = dp.position != null && dp.position.Length >= 3
+                    ? $"({dp.position[0]:F2}, {dp.position[1]:F2}, {dp.position[2]:F2})"
+                    : "(null)";
+                string srcStr = dp.sources != null ? string.Join(",", dp.sources) : "none";
+                Debug.Log($"[FusionMap]   [{d}] pos={posStr} label='{dp.label}' src={srcStr} anomaly={dp.is_anomaly}");
+            }
+        }
 
         if (useMeshInstancing)
             UpdateMeshInstanced(map);
@@ -336,7 +371,9 @@ public class FusionMapRenderer : MonoBehaviour
             // ENU -> Unity coordinates
             go.transform.localPosition = SensorAdapter.EnuToUnity(pt.position);
 
-            // Color by source
+            // Size + Color by label type
+            float scale = ClassifyLandmarkScale(pt.label);
+            go.transform.localScale = Vector3.one * scale;
             var color = ClassifyColor(pt);
             SetColor(go, color);
         }
@@ -359,7 +396,7 @@ public class FusionMapRenderer : MonoBehaviour
             if (pt.position == null || pt.position.Length < 3) continue;
 
             Vector3 uPos = SensorAdapter.EnuToUnity(pt.position);
-            float scale = pt.is_anomaly ? anomalyScale : pointScale;
+            float scale = pt.is_anomaly ? anomalyScale : ClassifyLandmarkScale(pt.label);
             Color color = pt.is_anomaly ? anomalyColor : ClassifyColor(pt);
 
             _matrices[_activePoints] = Matrix4x4.TRS(uPos, Quaternion.identity, Vector3.one * scale);
@@ -400,32 +437,105 @@ public class FusionMapRenderer : MonoBehaviour
     // ══════════════════════════════════════════════════════════
 
     /// <summary>
-    /// Bestimmt die Farbe eines Punkts anhand seiner Sources.
-    /// - source enthaelt osm -> 2D Landmark-Punkte (Gebaeude/Strassen)
-    /// - source enthaelt wifi -> dynamische Anomalie-Overlays
+    /// Bestimmt die Farbe eines Punkts anhand seiner Sources UND seines Labels.
+    /// - source wifi -> dynamische Anomalie-Overlays
+    /// - source osm  -> Label-basierte Farbe (building, road, park, water, rail)
     /// </summary>
     Color ClassifyColor(SensorAdapter.FusionPoint pt)
     {
+        bool isWifi = false;
+        bool isOsm = false;
+
         if (pt.sources != null)
         {
             foreach (var src in pt.sources)
             {
                 if (src == null) continue;
                 string s = src.ToLowerInvariant();
-                if (s.Contains("wifi")) return wifiColor;
-                if (s.Contains("osm")) return osmColor;
+                if (s.Contains("wifi")) isWifi = true;
+                if (s.Contains("osm")) isOsm = true;
             }
         }
 
-        // Fallback: Label-basiert
-        if (!string.IsNullOrEmpty(pt.label))
+        if (isWifi) return wifiColor;
+
+        // OSM-Punkte: Farbe nach Label differenzieren
+        if (isOsm || !string.IsNullOrEmpty(pt.label))
         {
-            string l = pt.label.ToLowerInvariant();
-            if (l.Contains("cable") || l.Contains("anomal")) return anomalyColor;
-            if (l.Contains("building") || l.Contains("road")) return osmColor;
+            return ClassifyLandmarkColor(pt.label);
         }
 
         return defaultColor;
+    }
+
+    /// <summary>
+    /// Bestimmt die Farbe anhand des Landmark-Labels (building, road, park, etc.).
+    /// </summary>
+    Color ClassifyLandmarkColor(string label)
+    {
+        if (string.IsNullOrEmpty(label)) return osmFallbackColor;
+
+        string l = label.ToLowerInvariant();
+
+        // Anomalie-Labels zuerst
+        if (l.Contains("cable") || l.Contains("anomal")) return anomalyColor;
+
+        // Gebaeude
+        if (l.Contains("building") || l.Contains("house") || l.Contains("church")
+            || l.Contains("school") || l.Contains("hospital") || l.Contains("industrial"))
+            return buildingColor;
+
+        // Strassen
+        if (l.Contains("road") || l.Contains("highway") || l.Contains("street")
+            || l.Contains("path") || l.Contains("footway") || l.Contains("cycleway"))
+            return roadColor;
+
+        // Gruenflaechen
+        if (l.Contains("park") || l.Contains("garden") || l.Contains("grass")
+            || l.Contains("forest") || l.Contains("wood") || l.Contains("meadow"))
+            return parkColor;
+
+        // Wasser
+        if (l.Contains("water") || l.Contains("river") || l.Contains("lake")
+            || l.Contains("stream") || l.Contains("canal") || l.Contains("pond"))
+            return waterColor;
+
+        // Schienen
+        if (l.Contains("rail") || l.Contains("railway") || l.Contains("tram"))
+            return railColor;
+
+        return osmFallbackColor;
+    }
+
+    /// <summary>
+    /// Bestimmt die Skalierung anhand des Landmark-Labels.
+    /// </summary>
+    float ClassifyLandmarkScale(string label)
+    {
+        if (string.IsNullOrEmpty(label)) return pointScale;
+
+        string l = label.ToLowerInvariant();
+
+        if (l.Contains("building") || l.Contains("house") || l.Contains("church")
+            || l.Contains("school") || l.Contains("hospital") || l.Contains("industrial"))
+            return buildingScale;
+
+        if (l.Contains("road") || l.Contains("highway") || l.Contains("street")
+            || l.Contains("path") || l.Contains("footway") || l.Contains("cycleway"))
+            return roadScale;
+
+        if (l.Contains("park") || l.Contains("garden") || l.Contains("grass")
+            || l.Contains("forest") || l.Contains("wood") || l.Contains("meadow"))
+            return parkScale;
+
+        if (l.Contains("water") || l.Contains("river") || l.Contains("lake")
+            || l.Contains("stream") || l.Contains("canal") || l.Contains("pond"))
+            return waterScale;
+
+        if (l.Contains("rail") || l.Contains("railway") || l.Contains("tram"))
+            return railScale;
+
+        return pointScale;
     }
 
     /// <summary>Setzt die Farbe eines GameObjects (MeshRenderer).</summary>

@@ -493,7 +493,7 @@ public class droneMovementController : MonoBehaviour
     /// </summary>
     void Update()
     {
-        if (save) { save = false; dS.saveOnFile(); }
+        if (save) { save = false; if (dS != null) dS.saveOnFile(); }
     }
 
     float startAfter = 0.1f;

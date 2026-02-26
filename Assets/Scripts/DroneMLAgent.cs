@@ -70,7 +70,8 @@ public class DroneMLAgent : Agent
 
     // ──────────────────────── Rewards ────────────────────────
     [Header("Rewards")]
-    public float targetReachedReward = 2.0f;
+    [Tooltip("Basis-Belohnung pro eingesammelter Landmark (niedriger, weil Bonuses dazukommen)")]
+    public float targetReachedReward = 1.0f;
     public float proximityRewardScale = 0.01f;
     public float stayAliveReward = 0.001f;
     public float crashPenalty = -1.0f;
@@ -130,6 +131,20 @@ public class DroneMLAgent : Agent
     [Tooltip("Bonus wenn alle Targets einer Episode eingesammelt wurden")]
     public float allTargetsCollectedBonus = 3.0f;
 
+    [Header("Landmark Bonuses")]
+    [Tooltip("Health-Bonus: Maximaler Zusatzreward bei voller Gesundheit (0 Schaden)")]
+    public float landmarkHealthBonusMax = 0.8f;
+    [Tooltip("Zeit-Bonus: Maximaler Zusatzreward bei sofortigem Einsammeln")]
+    public float landmarkTimeBonusMax = 0.6f;
+
+    [Header("Streak Multiplier")]
+    [Tooltip("Erhoehung des Multiplikators pro zusaetzlich gesammelter Landmark hintereinander")]
+    public float streakMultiplierStep = 0.15f;
+    [Tooltip("Maximaler Streak-Multiplikator (Cap)")]
+    public float maxStreakMultiplier = 3.0f;
+    [Tooltip("Streak bricht ab wenn die Zeit pro Target ueberschritten wird")]
+    public bool streakBreaksOnTimeout = true;
+
     [Header("Episode")]
     public float maxEpisodeSec = 60f;
 
@@ -152,6 +167,11 @@ public class DroneMLAgent : Agent
     // Sequential Target Tracking
     int targetsCollected;      // Anzahl eingesammelter Targets in dieser Episode
     float timeSinceLastTarget; // Zeit seit letztem Target-Spawn / Episode-Start
+
+    // Streak Tracking
+    int currentStreak;           // aktuelle Serie eingesammelter Landmarks
+    float streakMultiplier;      // aktueller Multiplikator (1.0 + streak * step)
+    float cumulativeStreakReward; // Summe aller Streak-Belohnungen (fuer Debug)
 
     // Damage Tracking
     float pendingDamageReward; // aufgelaufene Schadensstrafe seit letztem Step
@@ -195,6 +215,9 @@ public class DroneMLAgent : Agent
         targetsCollected = 0;
         timeSinceLastTarget = 0f;
         pendingDamageReward = 0f;
+        currentStreak = 0;
+        streakMultiplier = 1.0f;
+        cumulativeStreakReward = 0f;
 
         if (mode == DroneMode.Sim)
         {
@@ -505,20 +528,54 @@ public class DroneMLAgent : Agent
             }
         }
 
-        // 3) Target erfasst → Respawn + Speed-Bonus
+        // 3) Target erfasst → Respawn + Speed-Bonus + Health-Bonus + Streak-Multiplikator
         if (dist < detectionRadius)
         {
             targetsCollected++;
 
-            // Speed-Bonus: je schneller desto mehr (linear, 0 bei Timeout)
+            // ── Basis-Belohnung (bewusst niedriger, Bonuses gleichen aus) ──
+            float baseReward = targetReachedReward;
+
+            // ── Zeit-Bonus: je schneller, desto mehr (linear, 0 bei Timeout) ──
             float timeRatio = Mathf.Clamp01(1f - timeSinceLastTarget / maxSecondsPerTarget);
-            float speedBonus = timeRatio * targetSpeedBonusScale;
-            AddReward(targetReachedReward + speedBonus);
+            float timeBonus = timeRatio * landmarkTimeBonusMax;
+
+            // ── Health-Bonus: je weniger Schaden, desto mehr ──
+            float healthFactor = 1f;
+            if (damageModel != null)
+                healthFactor = 1f - damageModel.TotalDamageNormalized; // 1.0 = kein Schaden, 0.0 = zerstoert
+            float healthBonus = healthFactor * landmarkHealthBonusMax;
+
+            // ── Streak-Multiplikator: konsekutive Landmarks erhoehen den Multiplikator ──
+            // Streak bricht bei Timeout (wenn gewuenscht)
+            bool withinTime = timeSinceLastTarget < maxSecondsPerTarget;
+            if (withinTime || !streakBreaksOnTimeout)
+            {
+                currentStreak++;
+                streakMultiplier = Mathf.Min(
+                    1.0f + (currentStreak - 1) * streakMultiplierStep,
+                    maxStreakMultiplier);
+            }
+            else
+            {
+                // Streak gebrochen — zuruecksetzen auf 1
+                currentStreak = 1;
+                streakMultiplier = 1.0f;
+            }
+
+            // ── Gesamtbelohnung = (Basis + Bonuses) * Streak-Multiplikator ──
+            float totalReward = (baseReward + timeBonus + healthBonus) * streakMultiplier;
+            AddReward(totalReward);
+            cumulativeStreakReward += totalReward;
+
+            // Debug-Ausgabe
+            Debug.Log($"[MLAgent] Landmark #{targetsCollected} | base={baseReward:F2} time={timeBonus:F2} health={healthBonus:F2} streak=x{streakMultiplier:F2} (#{currentStreak}) => total={totalReward:F2}");
 
             // Alle Targets eingesammelt?
             if (maxTargetsPerEpisode > 0 && targetsCollected >= maxTargetsPerEpisode)
             {
                 AddReward(allTargetsCollectedBonus);
+                Debug.Log($"[MLAgent] Alle {targetsCollected} Targets gesammelt! Streak-Summe={cumulativeStreakReward:F2}");
                 EndEpisode();
                 return;
             }
@@ -527,6 +584,13 @@ public class DroneMLAgent : Agent
             SpawnNewTarget();
             timeSinceLastTarget = 0f;
             prevDistToTarget = DistToTarget();
+        }
+        else if (streakBreaksOnTimeout && timeSinceLastTarget >= maxSecondsPerTarget && currentStreak > 0)
+        {
+            // Streak-Reset bei Timeout (auch wenn Target noch nicht erreicht)
+            Debug.Log($"[MLAgent] Streak gebrochen (Timeout {timeSinceLastTarget:F1}s > {maxSecondsPerTarget:F1}s). War: {currentStreak}x");
+            currentStreak = 0;
+            streakMultiplier = 1.0f;
         }
 
         // 4) Flip-Recovery / Crash-Logik (jetzt mit Raycast-Altimeter)
