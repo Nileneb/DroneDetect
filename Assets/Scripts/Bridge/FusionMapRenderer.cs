@@ -10,9 +10,13 @@ using UnityEngine;
 ///
 /// Rendering-Regeln (aus Guide):
 ///   - is_anomaly = true  -> rote Marker (groesser)
-///   - source enthält osm -> weisse/graue statische Geometrie
-///   - source enthält wifi/depth -> gruene/blaue dynamische Overlays
+///   - source enthaelt osm -> 2D Landmark-Punkte (Gebaeude/Strassen, z=0)
+///   - source enthaelt wifi -> dynamische Anomalie-Overlays
 ///   - label -> optionaler Text (Billboard)
+///
+/// Nutzung von /map/anomalies fuer:
+///   - Alert-UI
+///   - Reward-Shaping in ML-Agents
 ///
 /// Optimierung:
 ///   - Punkt-Pool (Object-Pool) fuer GC-freies Rendering
@@ -43,7 +47,6 @@ public class FusionMapRenderer : MonoBehaviour
     [Header("Colors")]
     public Color osmColor = new Color(0.8f, 0.8f, 0.8f, 0.6f);
     public Color wifiColor = new Color(0.2f, 0.8f, 0.2f, 0.8f);
-    public Color depthColor = new Color(0.2f, 0.5f, 1.0f, 0.8f);
     public Color anomalyColor = new Color(1.0f, 0.1f, 0.1f, 1.0f);
     public Color defaultColor = new Color(0.6f, 0.6f, 0.6f, 0.5f);
 
@@ -398,6 +401,8 @@ public class FusionMapRenderer : MonoBehaviour
 
     /// <summary>
     /// Bestimmt die Farbe eines Punkts anhand seiner Sources.
+    /// - source enthaelt osm -> 2D Landmark-Punkte (Gebaeude/Strassen)
+    /// - source enthaelt wifi -> dynamische Anomalie-Overlays
     /// </summary>
     Color ClassifyColor(SensorAdapter.FusionPoint pt)
     {
@@ -408,7 +413,6 @@ public class FusionMapRenderer : MonoBehaviour
                 if (src == null) continue;
                 string s = src.ToLowerInvariant();
                 if (s.Contains("wifi")) return wifiColor;
-                if (s.Contains("depth")) return depthColor;
                 if (s.Contains("osm")) return osmColor;
             }
         }

@@ -6,6 +6,9 @@ using UnityEngine;
 ///
 /// Enthaelt alle Base-URLs, Polling-Raten, Koordinaten und Stabilitaetsparameter.
 /// Wird von DroneBridgeService, SensorAdapter und FusionMapRenderer referenziert.
+///
+/// Hinweis: Depth-API ist deaktiviert (zu langsam).
+/// Stattdessen: RGB Image Features + WiFi CSI → schnellere Verarbeitung.
 /// </summary>
 [CreateAssetMenu(fileName = "DroneBridgeConfig", menuName = "DroneDetect/Bridge Config")]
 public class DroneBridgeConfig : ScriptableObject
@@ -16,13 +19,10 @@ public class DroneBridgeConfig : ScriptableObject
     [Tooltip("Simulator API (Bild, NavData, Status)")]
     public string simBase = "http://localhost:5051";
 
-    [Tooltip("WiFi/CSI-Sensing Service")]
+    [Tooltip("WiFi/CSI-Sensing Service (WiFi CSI + RGB Features)")]
     public string wifiBase = "http://localhost:6060";
 
-    [Tooltip("Depth/Pointcloud Service")]
-    public string depthBase = "http://localhost:6061";
-
-    [Tooltip("OSM Map Service")]
+    [Tooltip("OSM Map Service (2D Landmarks)")]
     public string osmBase = "http://localhost:6062";
 
     [Tooltip("Fusion Service (Fuse + Map + Anomalies)")]
@@ -36,19 +36,19 @@ public class DroneBridgeConfig : ScriptableObject
     // ──────────────── Polling / Loop Rates ────────────────
 
     [Header("Loop Rates (Hz)")]
-    [Tooltip("Sensor-Upload (NavData + Image + WiFi + Depth)")]
+    [Tooltip("Sensor-Upload (WiFi CSI + RGB Features, 5 Hz = 200ms)")]
     [Range(0.5f, 20f)]
     public float sensorHz = 5f;
 
-    [Tooltip("Fusion-Trigger (/fuse)")]
+    [Tooltip("Fusion-Trigger (/fuse, 1-2 Hz)")]
     [Range(0.2f, 5f)]
     public float fusionHz = 1.5f;
 
-    [Tooltip("Map + Anomalies Pull")]
+    [Tooltip("Map + Anomalies Pull (1-2 Hz)")]
     [Range(0.2f, 5f)]
     public float mapHz = 1f;
 
-    [Tooltip("Health-Check aller Services")]
+    [Tooltip("Health-Check aller Services (0.2 Hz = alle 5s)")]
     [Range(0.05f, 1f)]
     public float healthHz = 0.2f;
 
@@ -62,7 +62,7 @@ public class DroneBridgeConfig : ScriptableObject
     // ──────────────── Stability / Timeouts ────────────────
 
     [Header("Stability")]
-    [Tooltip("HTTP-Timeout pro Request in Sekunden")]
+    [Tooltip("HTTP-Timeout pro Request in Sekunden (2-3s empfohlen)")]
     [Range(1, 10)]
     public int httpTimeoutSec = 3;
 

@@ -12,24 +12,28 @@ using UnityEngine.Networking;
 /// Vereint Drohnen-Steuerung (Takeoff/Land/Move/Hover) mit der
 /// Sensing-Pipeline (Sensor-Upload, Fusion-Trigger, Map-Pull, Health).
 ///
+/// Hinweis: Depth-API ist deaktiviert (zu langsam).
+/// Stattdessen: RGB Image Features + WiFi CSI → schnellere Verarbeitung.
+///
 /// ═══════════════════════════════════════════════════════════════
 /// UPLINK  (Unity -> APIs):
 ///   - Drohnen-Steuerung:   POST /takeoff, /land, /hover, /move, /reset
 ///   - NavData Polling:     GET  /navdata   (10 Hz)
 ///   - Status Polling:      GET  /status    (0.5 Hz)
-///   - Sensor-Upload:       POST /analyze   (WiFi/CSI, 5 Hz)
-///   - Sensor-Upload:       POST /depth/pointcloud (Image, 5 Hz)
-///   - Fusion-Trigger:      POST /fuse      (1.5 Hz)
+///   - Sensor-Upload:       POST /analyze   (WiFi/CSI + RGB Features, 5 Hz)
+///   - Fusion-Trigger:      POST /fuse      (1-2 Hz)
 ///
 /// DOWNLINK (APIs -> Unity):
-///   - Map-Pull:            GET  /map  +  /map/anomalies  (1 Hz)
-///   - Health-Check:        GET  /health   (0.2 Hz)
+///   - Map-Pull:            GET  /map?max_points=5000  (1-2 Hz)
+///   - Anomalien:           GET  /map/anomalies        (1-2 Hz)
+///   - Health-Check:        GET  /health   (0.2 Hz = alle 5s)
 ///
 /// ═══════════════════════════════════════════════════════════════
 /// Stabilitaet:
 ///   - HTTP-Timeout 2-3s pro Request
-///   - 1x Retry mit Backoff bei POST-Fehlern
-///   - Sensor-Throttle wenn Fusion-Latenz > Schwelle
+///   - Max. 1 Retry mit Exponential Backoff
+///   - Bei Fehlern nie Main-Thread blockieren
+///   - Sensor-Throttle wenn Fusion-Latenz > 1s
 ///   - Letzte Map gecacht (nie null nach erstem Empfang)
 ///
 /// ═══════════════════════════════════════════════════════════════
@@ -78,13 +82,13 @@ public class DroneBridgeService : MonoBehaviour
     [HideInInspector] public SensorAdapter.ImageQualityResponse imgQ = new SensorAdapter.ImageQualityResponse();
 
     /// <summary>API-Base-URL fuer Drohnensteuerung (wird aus config gelesen).</summary>
-    public string apiBaseUrl => config != null ? config.simBase : "http://localhost:5050";
+    public string apiBaseUrl => config != null ? config.simBase : "http://localhost:5051";
 
     // ══════════════════════════════════════════════════════════
     // Public State — Sensing Pipeline
     // ══════════════════════════════════════════════════════════
 
-    /// <summary>True wenn alle 5 Services geantwortet haben.</summary>
+    /// <summary>True wenn alle 4 Services geantwortet haben (sim, wifi, osm, fusion).</summary>
     public bool ServicesReady { get; private set; }
 
     /// <summary>True wenn OSM-Map initialisiert wurde.</summary>
@@ -293,7 +297,6 @@ public class DroneBridgeService : MonoBehaviour
     {
         yield return StartCoroutine(WaitForService(config.simBase + "/status", "simulator"));
         yield return StartCoroutine(WaitForService(config.wifiBase + "/health", "wifi"));
-        yield return StartCoroutine(WaitForService(config.depthBase + "/health", "depth"));
         yield return StartCoroutine(WaitForService(config.osmBase + "/health", "osm"));
         yield return StartCoroutine(WaitForService(config.fusionBase + "/health", "fusion"));
     }
@@ -341,7 +344,9 @@ public class DroneBridgeService : MonoBehaviour
         }));
     }
 
-    // ── Sensor Loop (5 Hz) ──
+    // ── Sensor Loop (5 Hz = 200ms) ──
+    // Liest Simulator-Sensoren (Image/Quality/NavData) und sendet:
+    //   POST /analyze (WiFi CSI + RGB Features)
 
     IEnumerator SensorLoop()
     {
@@ -354,7 +359,7 @@ public class DroneBridgeService : MonoBehaviour
                 continue;
             }
 
-            // Throttle bei langsamer Fusion
+            // Throttle bei langsamer Fusion (Sensor-Uploads drosseln wenn Fusion-Latenz > 1s)
             if (_throttled)
             {
                 yield return new WaitForSeconds(config.SensorInterval * 2f);
@@ -362,11 +367,11 @@ public class DroneBridgeService : MonoBehaviour
                 continue;
             }
 
-            // 1) Image + Quality vom Simulator ziehen
-            yield return StartCoroutine(PullImageAndQuality());
+            // 1) Image Quality vom Simulator ziehen (fuer RGB Features)
+            yield return StartCoroutine(PullImageQuality());
 
-            // 2) Parallel an WiFi + Depth senden
-            if (!string.IsNullOrEmpty(LatestImageB64) && nav != null)
+            // 2) WiFi/CSI + RGB Features an /analyze senden
+            if (nav != null)
             {
                 yield return StartCoroutine(PushSensorData());
             }
@@ -375,29 +380,10 @@ public class DroneBridgeService : MonoBehaviour
         }
     }
 
-    IEnumerator PullImageAndQuality()
+    IEnumerator PullImageQuality()
     {
-        // Image
-        using (var req = UnityWebRequest.Get(config.simBase + "/image"))
-        {
-            req.timeout = config.httpTimeoutSec;
-            yield return req.SendWebRequest();
-            if (req.result == UnityWebRequest.Result.Success)
-            {
-                try
-                {
-                    var img = JsonConvert.DeserializeObject<SensorAdapter.ImageResponse>(
-                        req.downloadHandler.text);
-                    LatestImageB64 = img.data;
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning("[Bridge] Image parse: " + ex.Message);
-                }
-            }
-        }
-
         // Quality (wird auch in imgQ gespeichert fuer ML-Agent-Kompatibilitaet)
+        // image_features kommen von /image/quality (edge_density, blur_level)
         using (var req = UnityWebRequest.Get(config.simBase + "/image/quality"))
         {
             req.timeout = config.httpTimeoutSec;
@@ -420,16 +406,12 @@ public class DroneBridgeService : MonoBehaviour
 
     IEnumerator PushSensorData()
     {
-        // Depth (fire & forget)
-        var depthPayload = SensorAdapter.BuildDepthPayload(LatestImageB64);
-        StartCoroutine(PostJsonPayload(config.depthBase + "/depth/pointcloud", depthPayload, _ => { }));
-
-        // WiFi/CSI
+        // WiFi/CSI + RGB Features -> POST /analyze
         var wifiPayload = SensorAdapter.BuildWifiAnalyze(config, nav, imgQ);
         yield return StartCoroutine(PostJsonPayload(config.wifiBase + "/analyze", wifiPayload, _ => { }));
     }
 
-    // ── Fusion Loop (1.5 Hz) ──
+    // ── Fusion Loop (1-2 Hz) ──
 
     IEnumerator FusionLoop()
     {
@@ -456,7 +438,7 @@ public class DroneBridgeService : MonoBehaviour
         }
     }
 
-    // ── Map + Anomalies Loop (1 Hz) ──
+    // ── Map + Anomalies Loop (1-2 Hz) ──
 
     IEnumerator MapLoop()
     {
@@ -518,7 +500,6 @@ public class DroneBridgeService : MonoBehaviour
         while (true)
         {
             yield return StartCoroutine(PingService(config.wifiBase + "/health", "wifi"));
-            yield return StartCoroutine(PingService(config.depthBase + "/health", "depth"));
             yield return StartCoroutine(PingService(config.osmBase + "/health", "osm"));
             yield return StartCoroutine(PingService(config.fusionBase + "/health", "fusion"));
             yield return wait;

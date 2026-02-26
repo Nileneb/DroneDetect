@@ -3,15 +3,17 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// SensorAdapter — Wandelt Simulator-Roh-Daten (NavData, Image, Quality, CSI)
+/// SensorAdapter — Wandelt Simulator-Roh-Daten (NavData, Image Quality, CSI)
 /// in die JSON-Payloads um, die die Micro-Services erwarten.
+///
+/// Hinweis: Depth-API ist deaktiviert (zu langsam).
+/// Stattdessen: RGB Image Features + WiFi CSI → schnellere Verarbeitung.
 ///
 /// Verantwortlichkeiten:
 ///   - Koordinaten-Mapping: Unity (x,y,z) -> API local_enu (x=x, y=z, z=y)
 ///   - Yaw in Radiant
 ///   - Synthetische CSI-Amplitude/Phase aus wifi_signal + Rauschen
 ///   - ImageFeatures-Payload aus Simulator /image/quality
-///   - Depth-Payload (base64-JPEG)
 ///
 /// Kein eigener HTTP — wird von DroneBridgeService aufgerufen.
 /// </summary>
@@ -35,12 +37,6 @@ public static class SensorAdapter
     {
         public string drone_id;
         public PositionPayload position;
-    }
-
-    [Serializable]
-    public class DepthPayload
-    {
-        public string image;
     }
 
     [Serializable]
@@ -229,14 +225,14 @@ public static class SensorAdapter
         };
     }
 
-    /// <summary>Baut den Depth-Payload aus base64-Image.</summary>
-    public static DepthPayload BuildDepthPayload(string imageBase64)
-    {
-        return new DepthPayload { image = imageBase64 };
-    }
-
     /// <summary>
     /// Baut den WiFi-Analyze-Payload mit synthetischem CSI und Bildqualitaet.
+    /// Enthaelt WiFi CSI + RGB Image Features in einem Request.
+    ///
+    /// Hinweis: Der Simulator liefert keine echten CSI-Arrays. Fuer Training:
+    ///   - amplitude/phase synthetisch aus wifi_signal + Rauschen erzeugen
+    ///   - image_features kommen von /image/quality (edge_density, blur_level)
+    ///   - echte CSI spaeter aus Hardware-Bridge einspeisen
     /// </summary>
     public static WifiAnalyzePayload BuildWifiAnalyze(
         DroneBridgeConfig cfg,
