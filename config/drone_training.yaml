@@ -1,0 +1,72 @@
+# DroneDetect ML-Agents Trainer Configuration
+# =============================================
+#
+# WORKFLOW — Imitation Learning (Lernen am Modell):
+#
+#   SCHRITT 1: Demo aufnehmen
+#     1. Unity öffnen
+#     2. Agent-GameObject auswählen → "Add Component" → "Demonstration Recorder"
+#        - Record = true
+#        - Demonstration Name = "DroneRouteDemo"
+#        - Demonstration Directory = "Assets/Demonstrations"
+#     3. Behavior Parameters → Behavior Type = "Heuristic Only"
+#     4. Play drücken → Route mit WASD abfliegen → Stop
+#     5. .demo Datei wird in Assets/Demonstrations/ gespeichert
+#
+#   SCHRITT 2: Training starten
+#     Terminal: mlagents-learn config/drone_training.yaml --run-id=drone_route_v1
+#     Dann in Unity Play drücken
+#
+#   SCHRITT 3: Nur PPO (ohne Demo)
+#     Wenn kein demo_path angegeben → reines Reinforcement Learning
+#
+
+behaviors:
+  DroneCSI:
+    trainer_type: ppo
+    
+    hyperparameters:
+      batch_size: 512
+      buffer_size: 10240
+      learning_rate: 3.0e-4
+      beta: 0.005          # Entropy-Regularisierung (exploration)
+      epsilon: 0.2         # PPO Clip-Range
+      lambd: 0.95          # GAE lambda
+      num_epoch: 3
+      learning_rate_schedule: linear
+
+    network_settings:
+      normalize: true
+      hidden_units: 256
+      num_layers: 3        # 3 reicht — weniger Overfitting als 4
+      vis_encode_type: simple
+
+    reward_signals:
+      # Extrinsische Belohnung (aus dem Skript)
+      extrinsic:
+        gamma: 0.995
+        strength: 1.0
+
+      # GAIL: lernt Reward-Funktion aus der Demo
+      # (Kommentar entfernen wenn .demo vorhanden)
+      gail:
+        gamma: 0.99
+        strength: 0.5
+        demo_path: /home/nil/ml-agents/config/DroneRouteDemo.demo
+        use_actions: true
+        use_vail: false
+
+    # Behavioral Cloning: direkt von Demo-Actions lernen
+    # (Kommentar entfernen wenn .demo vorhanden)
+    behavioral_cloning:
+      demo_path: /home/nil/ml-agents/config/DroneRouteDemo.demo
+      strength: 0.5          # Gewichtung BC vs PPO (0.5 = gleichgewichtig)
+      steps: 150000          # Nach 150k Steps fadet BC aus → PPO uebernimmt
+      batch_size: 512
+      num_epoch: 3
+
+    max_steps: 500000
+    time_horizon: 256
+    summary_freq: 5000
+    keep_checkpoints: 10
+    checkpoint_interval: 50000
