@@ -1,0 +1,110 @@
+{
+    "DroneCSI": {
+        "checkpoints": [
+            {
+                "steps": 999924,
+                "file_path": "results/v3_phase1/DroneCSI/DroneCSI-999924.onnx",
+                "reward": 1341.867090658708,
+                "creation_time": 1773042714.7743177,
+                "auxillary_file_paths": [
+                    "results/v3_phase1/DroneCSI/DroneCSI-999924.pt"
+                ]
+            },
+            {
+                "steps": 1099776,
+                "file_path": "results/v3_phase1/DroneCSI/DroneCSI-1099776.onnx",
+                "reward": 1227.0105005900066,
+                "creation_time": 1773044918.0294294,
+                "auxillary_file_paths": [
+                    "results/v3_phase1/DroneCSI/DroneCSI-1099776.pt"
+                ]
+            },
+            {
+                "steps": 1199976,
+                "file_path": "results/v3_phase1/DroneCSI/DroneCSI-1199976.onnx",
+                "reward": 1356.675198723288,
+                "creation_time": 1773047115.3867722,
+                "auxillary_file_paths": [
+                    "results/v3_phase1/DroneCSI/DroneCSI-1199976.pt"
+                ]
+            },
+            {
+                "steps": 1299875,
+                "file_path": "results/v3_phase1/DroneCSI/DroneCSI-1299875.onnx",
+                "reward": 1255.3524463645049,
+                "creation_time": 1773049310.0967221,
+                "auxillary_file_paths": [
+                    "results/v3_phase1/DroneCSI/DroneCSI-1299875.pt"
+                ]
+            },
+            {
+                "steps": 1399766,
+                "file_path": "results/v3_phase1/DroneCSI/DroneCSI-1399766.onnx",
+                "reward": 1334.8205753673208,
+                "creation_time": 1773051500.6547837,
+                "auxillary_file_paths": [
+                    "results/v3_phase1/DroneCSI/DroneCSI-1399766.pt"
+                ]
+            },
+            {
+                "steps": 1499966,
+                "file_path": "results/v3_phase1/DroneCSI/DroneCSI-1499966.onnx",
+                "reward": 1365.207191916073,
+                "creation_time": 1773053676.610257,
+                "auxillary_file_paths": [
+                    "results/v3_phase1/DroneCSI/DroneCSI-1499966.pt"
+                ]
+            },
+            {
+                "steps": 1599566,
+                "file_path": "results/v3_phase1/DroneCSI/DroneCSI-1599566.onnx",
+                "reward": 1289.4379974365233,
+                "creation_time": 1773056519.830288,
+                "auxillary_file_paths": [
+                    "results/v3_phase1/DroneCSI/DroneCSI-1599566.pt"
+                ]
+            },
+            {
+                "steps": 1627766,
+                "file_path": "results/v3_phase1/DroneCSI/DroneCSI-1627766.onnx",
+                "reward": 1272.2144019085429,
+                "creation_time": 1773058742.0125737,
+                "auxillary_file_paths": [
+                    "results/v3_phase1/DroneCSI/DroneCSI-1627766.pt"
+                ]
+            },
+            {
+                "steps": 1699766,
+                "file_path": "results/v3_phase1/DroneCSI/DroneCSI-1699766.onnx",
+                "reward": 1359.559186150046,
+                "creation_time": 1773061172.4951928,
+                "auxillary_file_paths": [
+                    "results/v3_phase1/DroneCSI/DroneCSI-1699766.pt"
+                ]
+            },
+            {
+                "steps": 1733278,
+                "file_path": "results/v3_phase1/DroneCSI/DroneCSI-1733278.onnx",
+                "reward": 1332.4998881022136,
+                "creation_time": 1773062700.6328304,
+                "auxillary_file_paths": [
+                    "results/v3_phase1/DroneCSI/DroneCSI-1733278.pt"
+                ]
+            }
+        ],
+        "final_checkpoint": {
+            "steps": 1733278,
+            "file_path": "results/v3_phase1/DroneCSI.onnx",
+            "reward": 1332.4998881022136,
+            "creation_time": 1773062700.6328304,
+            "auxillary_file_paths": [
+                "results/v3_phase1/DroneCSI/DroneCSI-1733278.pt"
+            ]
+        }
+    },
+    "metadata": {
+        "stats_format_version": "0.3.0",
+        "mlagents_version": "1.1.0",
+        "torch_version": "2.4.1+cu124"
+    }
+}

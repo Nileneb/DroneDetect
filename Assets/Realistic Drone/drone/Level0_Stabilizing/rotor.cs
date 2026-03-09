@@ -1,55 +1,79 @@
 ﻿using UnityEngine;
 using System.Collections;
 
+/// <summary>
+/// Rotor — Visuelle Rotor-Animation fuer den AR-Drone 2.0 Digital Twin.
+///
+/// Liest den Drohnen-State aus SimulatedDroneController und passt
+/// die Rotorgeschwindigkeit automatisch an:
+///   Landed/Emergency → Rotoren stehen
+///   TakingOff/Landing → Rotoren drehen mit halber Geschwindigkeit
+///   Hovering → Rotoren drehen mit Grundgeschwindigkeit
+///   Flying → Rotoren drehen proportional zur Motorlast
+///
+/// WICHTIG: Keine AddForce mehr — alle Physik laeuft ueber SimulatedDroneController.
+/// </summary>
 public class rotor : MonoBehaviour
 {
-
-    Rigidbody rBody;
-    float power;
-
     /// <summary>
-    /// Specify the verse of the rotation
-    /// <para> Set this in the editor
+    /// Drehrichtung des Rotors (im Inspector setzen).
     /// </summary>
     public bool counterclockwise = false;
 
     /// <summary>
-    /// Specify is the rotors are animated or static. Just a visual effect
-    /// <para> Set this in the editor
+    /// Visuelle Animation ein/aus.
     /// </summary>
-    public bool animationActivated = false;
+    public bool animationActivated = true;
 
-    /// <summary>
-    /// Function called before of the first update
-    /// </summary>
+    [Tooltip("Basis-Drehgeschwindigkeit (Grad/s bei Hover)")]
+    public float baseSpinSpeed = 2000f;
+
+    [Tooltip("Max Drehgeschwindigkeit (Grad/s bei Vollgas)")]
+    public float maxSpinSpeed = 4000f;
+
+    SimulatedDroneController _controller;
+    float _currentSpeed;
+
     void Start()
     {
-        rBody = GetComponentInParent<Rigidbody>();
+        _controller = GetComponentInParent<SimulatedDroneController>();
+        if (_controller == null)
+            Debug.LogWarning($"[rotor] {name}: Kein SimulatedDroneController im Parent gefunden!");
     }
 
-    /// <summary>
-    /// Sets the rotating power of the rotor
-    /// </summary>
-    /// <param name="intensity"> The rotating power of the rotor </param>
-    public void setPower(float intensity) { power = intensity; }
-
-    /// <summary>
-    /// Gets the rotating power of the rotor
-    /// </summary>
-    /// <returns>the actual rotating power of the rotor</returns>
-    public float getPower() { return power; }
-
-    /// <summary>
-    /// Function called once per frame
-    /// </summary>
-    void Update() { if (animationActivated) transform.Rotate(0, 0, power * 700 * Time.deltaTime * (counterclockwise ? -1 : 1)); }
-
-    /// <summary>
-    /// Function at regular time interval
-    /// </summary>
-    void FixedUpdate()
+    void Update()
     {
-        rBody.AddForceAtPosition(transform.forward * power, transform.position);
-        //lr.SetPosition(1, new Vector3(0, 0, power / 3f));
+        if (!animationActivated || _controller == null) return;
+
+        // Ziel-Drehgeschwindigkeit abhaengig vom Drone-State
+        float targetSpeed = 0f;
+
+        switch (_controller.State)
+        {
+            case DroneState.Landed:
+            case DroneState.Emergency:
+                targetSpeed = 0f;
+                break;
+
+            case DroneState.TakingOff:
+            case DroneState.Landing:
+                targetSpeed = baseSpinSpeed * 0.6f;
+                break;
+
+            case DroneState.Hovering:
+                targetSpeed = baseSpinSpeed;
+                break;
+
+            case DroneState.Flying:
+                // Schnellere Rotation bei aktivem Flug
+                targetSpeed = Mathf.Lerp(baseSpinSpeed, maxSpinSpeed, 0.5f);
+                break;
+        }
+
+        // Sanftes An-/Auslaufen (Motor-Lag visuell simuliert)
+        _currentSpeed = Mathf.Lerp(_currentSpeed, targetSpeed, Time.deltaTime * 8f);
+
+        float direction = counterclockwise ? -1f : 1f;
+        transform.Rotate(0, 0, _currentSpeed * direction * Time.deltaTime);
     }
 }

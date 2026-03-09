@@ -1,0 +1,115 @@
+{
+    "name": "root",
+    "metadata": {
+        "timer_format_version": "0.1.0",
+        "start_time_seconds": "1773019870",
+        "python_version": "3.10.12 (main, Jul  5 2023, 18:54:27) [GCC 11.2.0]",
+        "command_line_arguments": "/home/nileneb/miniconda3/envs/mlagents/bin/mlagents-learn config/drone_training.yaml --run-id=v2_fixed --force --num-envs=1",
+        "mlagents_version": "1.1.0",
+        "mlagents_envs_version": "1.1.0",
+        "communication_protocol_version": "1.5.0",
+        "pytorch_version": "2.4.1+cu124",
+        "numpy_version": "1.23.5",
+        "end_time_seconds": "1773019878"
+    },
+    "total": 7.520517575998383,
+    "count": 1,
+    "self": 0.00438311199832242,
+    "children": {
+        "run_training.setup": {
+            "total": 0.015964506004820578,
+            "count": 1,
+            "self": 0.015964506004820578
+        },
+        "TrainerController.start_learning": {
+            "total": 7.50016995799524,
+            "count": 1,
+            "self": 3.93939990317449e-05,
+            "children": {
+                "TrainerController._reset_env": {
+                    "total": 7.497888025995053,
+                    "count": 1,
+                    "self": 6.622647101990879,
+                    "children": {
+                        "demo_to_buffer": {
+                            "total": 0.8752409240041743,
+                            "count": 1,
+                            "self": 4.7198998800013214e-05,
+                            "children": {
+                                "load_demonstration": {
+                                    "total": 0.011203299000044353,
+                                    "count": 1,
+                                    "self": 0.007352332002483308,
+                                    "children": {
+                                        "read_file": {
+                                            "total": 0.003850966997561045,
+                                            "count": 1,
+                                            "self": 0.003850966997561045
+                                        }
+                                    }
+                                },
+                                "make_demo_buffer": {
+                                    "total": 0.8639904260053299,
+                                    "count": 1,
+                                    "self": 0.02723193112615263,
+                                    "children": {
+                                        "steps_from_proto": {
+                                            "total": 0.8367584948791773,
+                                            "count": 1286,
+                                            "self": 0.09451910340430913,
+                                            "children": {
+                                                "_process_maybe_compressed_observation": {
+                                                    "total": 0.6837191253871424,
+                                                    "count": 5144,
+                                                    "self": 0.037049335151095875,
+                                                    "children": {
+                                                        "_observation_to_np_array": {
+                                                            "total": 0.6466697902360465,
+                                                            "count": 2572,
+                                                            "self": 0.02336877414927585,
+                                                            "children": {
+                                                                "process_pixels": {
+                                                                    "total": 0.6233010160867707,
+                                                                    "count": 2572,
+                                                                    "self": 0.14970926103706006,
+                                                                    "children": {
+                                                                        "image_decompress": {
+                                                                            "total": 0.4735917550497106,
+                                                                            "count": 2572,
+                                                                            "self": 0.4735917550497106
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+                                                },
+                                                "_process_rank_one_or_two_observation": {
+                                                    "total": 0.05852026608772576,
+                                                    "count": 5144,
+                                                    "self": 0.05852026608772576
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "TrainerController._save_models": {
+                    "total": 0.0022425380011554807,
+                    "count": 1,
+                    "self": 7.388000813079998e-05,
+                    "children": {
+                        "RLTrainer._checkpoint": {
+                            "total": 0.0021686579930246808,
+                            "count": 1,
+                            "self": 0.0021686579930246808
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
