@@ -2,22 +2,103 @@
     "DroneCSI": {
         "checkpoints": [
             {
-                "steps": 1176,
-                "file_path": "results/v5_02/DroneCSI/DroneCSI-1176.onnx",
-                "reward": 61.581016540527344,
-                "creation_time": 1773068945.6334136,
+                "steps": 99796,
+                "file_path": "results/v5_02/DroneCSI/DroneCSI-99796.onnx",
+                "reward": 101.91754304445706,
+                "creation_time": 1773070583.7132456,
                 "auxillary_file_paths": [
-                    "results/v5_02/DroneCSI/DroneCSI-1176.pt"
+                    "results/v5_02/DroneCSI/DroneCSI-99796.pt"
+                ]
+            },
+            {
+                "steps": 199918,
+                "file_path": "results/v5_02/DroneCSI/DroneCSI-199918.onnx",
+                "reward": 322.54014551639557,
+                "creation_time": 1773071527.5257854,
+                "auxillary_file_paths": [
+                    "results/v5_02/DroneCSI/DroneCSI-199918.pt"
+                ]
+            },
+            {
+                "steps": 299723,
+                "file_path": "results/v5_02/DroneCSI/DroneCSI-299723.onnx",
+                "reward": 519.7081036847085,
+                "creation_time": 1773072339.7546237,
+                "auxillary_file_paths": [
+                    "results/v5_02/DroneCSI/DroneCSI-299723.pt"
+                ]
+            },
+            {
+                "steps": 399950,
+                "file_path": "results/v5_02/DroneCSI/DroneCSI-399950.onnx",
+                "reward": 589.2692848205567,
+                "creation_time": 1773073152.376242,
+                "auxillary_file_paths": [
+                    "results/v5_02/DroneCSI/DroneCSI-399950.pt"
+                ]
+            },
+            {
+                "steps": 499970,
+                "file_path": "results/v5_02/DroneCSI/DroneCSI-499970.onnx",
+                "reward": 613.1076614379883,
+                "creation_time": 1773073976.7423809,
+                "auxillary_file_paths": [
+                    "results/v5_02/DroneCSI/DroneCSI-499970.pt"
+                ]
+            },
+            {
+                "steps": 599746,
+                "file_path": "results/v5_02/DroneCSI/DroneCSI-599746.onnx",
+                "reward": 612.1415710449219,
+                "creation_time": 1773074853.80998,
+                "auxillary_file_paths": [
+                    "results/v5_02/DroneCSI/DroneCSI-599746.pt"
+                ]
+            },
+            {
+                "steps": 699946,
+                "file_path": "results/v5_02/DroneCSI/DroneCSI-699946.onnx",
+                "reward": 613.1635533917334,
+                "creation_time": 1773075658.092277,
+                "auxillary_file_paths": [
+                    "results/v5_02/DroneCSI/DroneCSI-699946.pt"
+                ]
+            },
+            {
+                "steps": 799986,
+                "file_path": "results/v5_02/DroneCSI/DroneCSI-799986.onnx",
+                "reward": 647.5100205297823,
+                "creation_time": 1773076598.6184943,
+                "auxillary_file_paths": [
+                    "results/v5_02/DroneCSI/DroneCSI-799986.pt"
+                ]
+            },
+            {
+                "steps": 899498,
+                "file_path": "results/v5_02/DroneCSI/DroneCSI-899498.onnx",
+                "reward": 642.0781575253135,
+                "creation_time": 1773077455.788603,
+                "auxillary_file_paths": [
+                    "results/v5_02/DroneCSI/DroneCSI-899498.pt"
+                ]
+            },
+            {
+                "steps": 942698,
+                "file_path": "results/v5_02/DroneCSI/DroneCSI-942698.onnx",
+                "reward": 646.6182893700898,
+                "creation_time": 1773078098.7260287,
+                "auxillary_file_paths": [
+                    "results/v5_02/DroneCSI/DroneCSI-942698.pt"
                 ]
             }
         ],
         "final_checkpoint": {
-            "steps": 1176,
+            "steps": 942698,
             "file_path": "results/v5_02/DroneCSI.onnx",
-            "reward": 61.581016540527344,
-            "creation_time": 1773068945.6334136,
+            "reward": 646.6182893700898,
+            "creation_time": 1773078098.7260287,
             "auxillary_file_paths": [
-                "results/v5_02/DroneCSI/DroneCSI-1176.pt"
+                "results/v5_02/DroneCSI/DroneCSI-942698.pt"
             ]
         }
     },
