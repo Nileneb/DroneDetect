@@ -223,21 +223,31 @@ public class DroneAgent : Agent
 
     void CheckTargetHit(GameObject hitObject)
     {
-        int idx = targets.IndexOf(hitObject);
-        if (idx < 0) return;
+        if (hitObject == null || targets == null || targets.Count == 0)
+            return;
+    int idx = targets.IndexOf(hitObject);
+    if (idx < 0) return;
 
-        _targetsCollected++;
-        Debug.Log($"[DroneAgent] Target '{hitObject.name}' ({_targetsCollected}/{_totalTargets})");
-        AddReward(targetReward);
-        hitObject.SetActive(false);
+    _targetsCollected++;
+    
+    // ═══ NEU: Multiplikator-Reward ═══
+    // 1. Target = 1×, 2. = 2×, 3. = 3×, 4. = 4×
+    float scaledReward = targetReward * _targetsCollected;
+    AddReward(scaledReward);
+    
+    Debug.Log($"[DroneAgent] Target '{hitObject.name}' ({_targetsCollected}/{_totalTargets}) " +
+              $"Reward: {scaledReward:F1} (Multiplikator: {_targetsCollected}x)");
+    
+    hitObject.SetActive(false);
 
-        if (_targetsCollected >= _totalTargets && _totalTargets > 0)
-        {
-            Debug.Log("[DroneAgent] Alle Targets! Bonus + Episode-Ende");
-            AddReward(allTargetsBonus);
-            EndCurrentEpisode("all targets collected");
-        }
+    if (_targetsCollected >= _totalTargets && _totalTargets > 0)
+    {
+        Debug.Log("[DroneAgent] Alle Targets! Bonus + Episode-Ende");
+        AddReward(allTargetsBonus);
+        EndCurrentEpisode("all targets collected");
     }
+    }
+
 
     // ═══════════════════════ Target-Management ═══════════════════════
 
