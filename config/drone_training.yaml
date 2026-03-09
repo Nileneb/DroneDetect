@@ -62,4 +62,4 @@ behaviors:
 
 # Physik-Stabilisierung: time_scale reduziert wegen Motor-Response-Time (~150ms Lag)
 engine_settings:
-  time_scale: 3
+  time_scale: 1.4

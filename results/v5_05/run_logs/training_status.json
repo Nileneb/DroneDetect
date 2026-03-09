@@ -1,0 +1,38 @@
+{
+    "DroneCSI": {
+        "checkpoints": [
+            {
+                "steps": 99880,
+                "file_path": "results/v5_05/DroneCSI/DroneCSI-99880.onnx",
+                "reward": 93.61401836107026,
+                "creation_time": 1773083389.7749104,
+                "auxillary_file_paths": [
+                    "results/v5_05/DroneCSI/DroneCSI-99880.pt"
+                ]
+            },
+            {
+                "steps": 199723,
+                "file_path": "results/v5_05/DroneCSI/DroneCSI-199723.onnx",
+                "reward": 292.9368929039864,
+                "creation_time": 1773084763.254587,
+                "auxillary_file_paths": [
+                    "results/v5_05/DroneCSI/DroneCSI-199723.pt"
+                ]
+            },
+            {
+                "steps": 299816,
+                "file_path": "results/v5_05/DroneCSI/DroneCSI-299816.onnx",
+                "reward": 482.2464069638933,
+                "creation_time": 1773086249.0814838,
+                "auxillary_file_paths": [
+                    "results/v5_05/DroneCSI/DroneCSI-299816.pt"
+                ]
+            }
+        ]
+    },
+    "metadata": {
+        "stats_format_version": "0.3.0",
+        "mlagents_version": "1.1.0",
+        "torch_version": "2.4.1+cu124"
+    }
+}
