@@ -34,10 +34,24 @@ public class DroneAgent : Agent
     public float targetReward = 1.0f;
     public float allTargetsBonus = 2.0f;
     public float groundPenalty = -1.0f;
+    public float wallPenalty = -1.5f;
 
     [Header("Crash Detection")]
     [Tooltip("Crash-Detection aktivieren? Fuer manuelles Testen AUSSCHALTEN!")]
     public bool enableCrashDetection = false;
+
+    [Header("Episode Control")]
+    [Tooltip("Maximale Agent-Steps pro Episode (0 = aus).")]
+    public int episodeStepLimit = 1500;
+
+    [Tooltip("Kleine Timeout-Strafe, wenn Episode per Step-Limit endet.")]
+    public float timeoutPenalty = -0.2f;
+
+    [Tooltip("Tag fuer Boden-Objekte (wird nur bestraft wenn enableCrashDetection=true)")]
+    public string groundTag = "Ground";
+
+    [Tooltip("Tag fuer Wand-Objekte (wird immer bestraft)")]
+    public string wallTag = "Wall";
 
     [Tooltip("Hoehe ab der die Drohne als sicher gilt (m ueber Spawn)")]
     public float safeAltitude = 0.5f;
@@ -53,11 +67,13 @@ public class DroneAgent : Agent
     int _totalTargets;
     bool _hasReachedSafeAltitude;
     Vector3 _spawnPosition;
+    int _stepsInEpisode;
+    bool _isEpisodeEnding;
 
     public override void Initialize()
     {
         // WICHTIG: MaxStep=0 damit ML-Agents NIEMALS automatisch die Episode beendet
-        MaxStep = 0;
+        // MaxStep = 0;
 
         _drone = GetComponent<SimulatedDroneController>();
         _rb = GetComponent<Rigidbody>();
@@ -104,11 +120,7 @@ public class DroneAgent : Agent
                 && _drone.State == DroneState.Flying
                 && alt < crashAltitude)
             {
-                Debug.LogWarning($"[DroneAgent] CRASH! alt={alt:F2}m");
-                AddReward(groundPenalty);
-                _hasReachedSafeAltitude = false;
-                _drone.ResetController(_spawnPosition, Quaternion.identity);
-                RestoreTargets();
+                ApplyCrashPenalty(groundPenalty, $"ALT crash: alt={alt:F2}m");
             }
         }
 
@@ -154,12 +166,54 @@ public class DroneAgent : Agent
 
     void OnCollisionEnter(Collision collision)
     {
-        CheckTargetHit(collision.gameObject);
+        HandleContact(collision.gameObject);
     }
 
     void OnTriggerEnter(Collider other)
     {
-        CheckTargetHit(other.gameObject);
+        HandleContact(other.gameObject);
+    }
+
+    void HandleContact(GameObject hitObject)
+    {
+        if (hitObject == null)
+            return;
+
+        // WICHTIG: Wandkontakt immer bestrafen, unabhaengig von enableCrashDetection.
+        if (!string.IsNullOrEmpty(wallTag) && hitObject.CompareTag(wallTag))
+        {
+            ApplyCrashPenalty(wallPenalty, $"WALL contact: {hitObject.name}");
+            return;
+        }
+
+        // Bodenkontakt nur bestrafen, wenn Crash-Detection aktiv ist.
+        if (enableCrashDetection && !string.IsNullOrEmpty(groundTag) && hitObject.CompareTag(groundTag))
+        {
+            ApplyCrashPenalty(groundPenalty, $"GROUND contact: {hitObject.name}");
+            return;
+        }
+
+        CheckTargetHit(hitObject);
+    }
+
+    void ApplyCrashPenalty(float penalty, string reason)
+    {
+        if (_isEpisodeEnding)
+            return;
+
+        Debug.LogWarning($"[DroneAgent] CRASH! {reason}");
+        AddReward(penalty);
+        EndCurrentEpisode(reason);
+    }
+
+    void EndCurrentEpisode(string reason)
+    {
+        if (_isEpisodeEnding)
+            return;
+
+        _isEpisodeEnding = true;
+        Debug.Log($"[DroneAgent] EndEpisode: {reason}");
+        EndEpisode();
     }
 
     void CheckTargetHit(GameObject hitObject)
@@ -174,10 +228,9 @@ public class DroneAgent : Agent
 
         if (_targetsCollected >= _totalTargets && _totalTargets > 0)
         {
-            Debug.Log("[DroneAgent] Alle Targets! Bonus + Reset");
+            Debug.Log("[DroneAgent] Alle Targets! Bonus + Episode-Ende");
             AddReward(allTargetsBonus);
-            _drone.ResetController(_spawnPosition, Quaternion.identity);
-            RestoreTargets();
+            EndCurrentEpisode("all targets collected");
         }
     }
 
@@ -203,16 +256,9 @@ public class DroneAgent : Agent
 
     public override void OnEpisodeBegin()
     {
-        // SCHUTZ: Wenn die Drohne gerade in der Luft ist,
-        // NICHT resetten! Verhindert unerwartete Resets
-        // durch ML-Agents Framework (MaxStep, Academy, etc.)
-        if (_drone != null
-            && _drone.State != DroneState.Landed
-            && _drone.State != DroneState.Emergency)
-        {
-            Debug.LogWarning($"[DroneAgent] OnEpisodeBegin BLOCKIERT (State={_drone.State})");
-            return;
-        }
+        _isEpisodeEnding = false;
+        _stepsInEpisode = 0;
+        _hasReachedSafeAltitude = false;
 
         if (_drone != null)
             _drone.ResetController(_spawnPosition, Quaternion.identity);
@@ -240,7 +286,15 @@ public class DroneAgent : Agent
 
     public override void OnActionReceived(ActionBuffers actions)
     {
-        if (_drone == null) return;
+        if (_drone == null || _isEpisodeEnding) return;
+
+        _stepsInEpisode++;
+        if (episodeStepLimit > 0 && _stepsInEpisode >= episodeStepLimit)
+        {
+            AddReward(timeoutPenalty);
+            EndCurrentEpisode($"step limit reached ({episodeStepLimit})");
+            return;
+        }
 
         // Continuous Actions: 0=fwd, 1=left, 2=up, 3=turn, 4=takeoff/land
         var ca = actions.ContinuousActions;
