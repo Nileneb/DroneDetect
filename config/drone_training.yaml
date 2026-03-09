@@ -47,26 +47,17 @@ behaviors:
         gamma: 0.995
         strength: 1.0
 
-      # GAIL: lernt Reward-Funktion aus der Demo
-      # (Kommentar entfernen wenn .demo vorhanden)
-      gail:
-        gamma: 0.99
-        strength: 0.5
-        demo_path: /home/nil/ml-agents/config/DroneRouteDemo.demo
-        use_actions: true
-        use_vail: false
-
     # Behavioral Cloning: direkt von Demo-Actions lernen
-    # (Kommentar entfernen wenn .demo vorhanden)
+    # BC-first Setup fuer stabile Imitation, PPO uebernimmt spaeter feinere Optimierung
     behavioral_cloning:
-      demo_path: /home/nil/ml-agents/config/DroneRouteDemo.demo
-      strength: 0.5          # Gewichtung BC vs PPO (0.5 = gleichgewichtig)
-      steps: 150000          # Nach 150k Steps fadet BC aus → PPO uebernimmt
+      demo_path: Assets/Demonstrations/DroneRouteDemo.demo
+      strength: 0.3          # Leicht erhoehte BC-Gewichtung fuer stabileres Imitationslernen
+      steps: 200000          # Laengere BC-Phase (~10% von max_steps) fuer solide Basis
       batch_size: 512
       num_epoch: 3
 
-    max_steps: 500000
+    max_steps: 2000000       # 2M Steps fuer kontinuierliche Drohnensteuerung
     time_horizon: 256
-    summary_freq: 5000
+    summary_freq: 10000      # Weniger Log-Spam bei laengeren Runs
     keep_checkpoints: 10
-    checkpoint_interval: 50000
+    checkpoint_interval: 100000  # Checkpoints alle 100k Steps
