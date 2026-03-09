@@ -74,17 +74,19 @@ public class DroneAgent : Agent
     Vector3 _spawnPosition;
     int _stepsInEpisode;
     bool _isEpisodeEnding;
+    int _defaultEpisodeStepLimit;
 
     public override void Initialize()
     {
         MaxStep = 5000;
+        _defaultEpisodeStepLimit = episodeStepLimit;  // Speichern des default Step-Limits
 
         _drone = GetComponent<SimulatedDroneController>();
         _rb = GetComponent<Rigidbody>();
         _detection = GetComponent<ObjectDetectionReward>();
         _spawnPosition = transform.position;
 
-        Debug.Log($"[DroneAgent] Initialize OK. MaxStep={MaxStep}, SpawnY={_spawnPosition.y:F2}");
+        Debug.Log($"[DroneAgent] Initialize OK. MaxStep={MaxStep}, episodeStepLimit={episodeStepLimit}, SpawnY={_spawnPosition.y:F2}");
 
         // Originalpositionen der Targets sichern
         _totalTargets = targets.Count;
@@ -235,8 +237,16 @@ public class DroneAgent : Agent
     float scaledReward = targetReward * _targetsCollected;
     AddReward(scaledReward);
     
+    // ═══ NEU: Bonus-Steps pro Target (+500) ═══
+    // Der Agent wird nicht bestraft, weil er langsam war,
+    // sondern bekommt Zeit geschenkt. Kombiniert mit dem Multiplikator
+    // entsteht ein doppelter Anreiz (mehr Reward + mehr Zeit).
+    episodeStepLimit += 500;
+    MaxStep = episodeStepLimit;  // Beide in Sync halten
+    
     Debug.Log($"[DroneAgent] Target '{hitObject.name}' ({_targetsCollected}/{_totalTargets}) " +
-              $"Reward: {scaledReward:F1} (Multiplikator: {_targetsCollected}x)");
+              $"Reward: {scaledReward:F1} (Multiplikator: {_targetsCollected}x) | " +
+              $"episodeStepLimit now: {episodeStepLimit} (+500)");
     
     hitObject.SetActive(false);
 
@@ -274,6 +284,10 @@ public class DroneAgent : Agent
         _isEpisodeEnding = false;
         _stepsInEpisode = 0;
         _hasReachedSafeAltitude = false;
+        
+        // Step-Limit auf Basis-Wert zurücksetzen
+        episodeStepLimit = _defaultEpisodeStepLimit;
+        MaxStep = episodeStepLimit;  // Beide in Sync halten
 
         if (_detection != null)
             _detection.ResetTracking();
@@ -282,7 +296,7 @@ public class DroneAgent : Agent
             _drone.ResetController(_spawnPosition, Quaternion.identity);
 
         RestoreTargets();
-        Debug.Log("[DroneAgent] Episode-Reset.");
+        Debug.Log($"[DroneAgent] Episode-Reset. episodeStepLimit reset to {episodeStepLimit}, MaxStep={MaxStep}");
     }
 
     public override void CollectObservations(VectorSensor sensor)
