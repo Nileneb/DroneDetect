@@ -37,6 +37,10 @@ public class DroneAgent : Agent
     public float groundPenalty = -1.0f;
     public float wallPenalty = -1.5f;
 
+    [Header("Observation Target (Bodenkamera)")]
+    [Tooltip("Objekt das die Bodenkamera im Blick halten soll (optional).")]
+    public Transform observationTarget;
+
     [Header("Crash Detection")]
     [Tooltip("Crash-Detection aktivieren? Fuer manuelles Testen AUSSCHALTEN!")]
     public bool enableCrashDetection = false;
@@ -378,6 +382,14 @@ public class DroneAgent : Agent
         else
         {
             // Alle Targets eingesammelt → kein Distanz-Reward noetig
+        }
+
+        // Beobachtungstarget: kleiner Reward fuers im-Blick-halten (Bodenkamera)
+        if (_detection != null && observationTarget != null)
+        {
+            float obsReward = _detection.CheckObservation(observationTarget);
+            if (obsReward > 0f)
+                AddReward(obsReward);
         }
 
         // Kleine Step-Strafe (reduziert gegenueber vorher)
