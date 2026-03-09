@@ -23,6 +23,7 @@ public class DroneAgent : Agent
 {
     SimulatedDroneController _drone;
     Rigidbody _rb;
+    ObjectDetectionReward _detection;
 
     // ═══════════════════════ Parcour-System ═══════════════════════
 
@@ -72,11 +73,11 @@ public class DroneAgent : Agent
 
     public override void Initialize()
     {
-        // WICHTIG: MaxStep=0 damit ML-Agents NIEMALS automatisch die Episode beendet
-        // MaxStep = 0;
+        MaxStep = 5000;
 
         _drone = GetComponent<SimulatedDroneController>();
         _rb = GetComponent<Rigidbody>();
+        _detection = GetComponent<ObjectDetectionReward>();
         _spawnPosition = transform.position;
 
         Debug.Log($"[DroneAgent] Initialize OK. MaxStep={MaxStep}, SpawnY={_spawnPosition.y:F2}");
@@ -260,6 +261,9 @@ public class DroneAgent : Agent
         _stepsInEpisode = 0;
         _hasReachedSafeAltitude = false;
 
+        if (_detection != null)
+            _detection.ResetTracking();
+
         if (_drone != null)
             _drone.ResetController(_spawnPosition, Quaternion.identity);
 
@@ -272,6 +276,7 @@ public class DroneAgent : Agent
         NavdataPacket nav = _drone.Navdata;
         Vector3 av = _rb.angularVelocity;
 
+        // Eigenzustand (10 Werte)
         sensor.AddObservation(nav.altitude / 10f);
         sensor.AddObservation(nav.vx / 5f);
         sensor.AddObservation(nav.vy / 5f);
@@ -282,6 +287,37 @@ public class DroneAgent : Agent
         sensor.AddObservation(av.x / 5f);
         sensor.AddObservation(av.y / 5f);
         sensor.AddObservation(av.z / 5f);
+
+        // Richtung + Distanz zum naechsten aktiven Target (4 Werte)
+        GameObject nextTarget = GetNextActiveTarget();
+        if (nextTarget != null)
+        {
+            Vector3 dirWorld = nextTarget.transform.position - transform.position;
+            Vector3 dirLocal = transform.InverseTransformDirection(dirWorld);
+            float dist = dirWorld.magnitude;
+            sensor.AddObservation(dirLocal.normalized);  // 3 Werte
+            sensor.AddObservation(dist / 50f);            // 1 Wert (normalisiert)
+        }
+        else
+        {
+            sensor.AddObservation(Vector3.zero);  // 3
+            sensor.AddObservation(0f);            // 1
+        }
+    }
+
+    GameObject GetNextActiveTarget()
+    {
+        float minDist = float.MaxValue;
+        GameObject closest = null;
+        foreach (var t in targets)
+        {
+            if (t != null && t.activeSelf)
+            {
+                float d = Vector3.Distance(transform.position, t.transform.position);
+                if (d < minDist) { minDist = d; closest = t; }
+            }
+        }
+        return closest;
     }
 
     public override void OnActionReceived(ActionBuffers actions)
@@ -321,8 +357,31 @@ public class DroneAgent : Agent
                 _drone.Move(fwd, left, up, turn);
         }
 
-        // Kleine negative Belohnung pro Step → Agent lernt effizient zu sein
-        AddReward(-0.0005f);
+        // Distanz-basierter Reward + Detection-Reward
+        GameObject next = GetNextActiveTarget();
+        if (next != null)
+        {
+            // Y (Hoehe) wird staerker gewichtet als X/Z (horizontal)
+            Vector3 delta = next.transform.position - transform.position;
+            float weightedDist = Mathf.Sqrt(delta.x * delta.x + delta.z * delta.z + delta.y * delta.y * 4f);
+            // Strafe skaliert mit gewichteter Distanz → Agent wird zum Target gezogen
+            AddReward(-weightedDist * 0.0001f);
+
+            // Detection-Reward: Sichtbarkeit + Annaeherung (nur wenn Component vorhanden)
+            if (_detection != null)
+            {
+                float detReward = _detection.CheckDetection(next.transform);
+                if (detReward > 0f)
+                    AddReward(detReward);
+            }
+        }
+        else
+        {
+            // Alle Targets eingesammelt → kein Distanz-Reward noetig
+        }
+
+        // Kleine Step-Strafe (reduziert gegenueber vorher)
+        AddReward(-0.0001f);
     }
 
     public override void Heuristic(in ActionBuffers actionsOut)
