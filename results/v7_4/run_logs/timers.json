@@ -1,0 +1,303 @@
+{
+    "name": "root",
+    "gauges": {
+        "DroneCSI.Policy.Entropy.mean": {
+            "value": 1.404299020767212,
+            "min": 1.404299020767212,
+            "max": 1.404299020767212,
+            "count": 1
+        },
+        "DroneCSI.Policy.Entropy.sum": {
+            "value": 70287.9765625,
+            "min": 70287.9765625,
+            "max": 70287.9765625,
+            "count": 1
+        },
+        "DroneCSI.Environment.LessonNumber.parcours_difficulty.mean": {
+            "value": 3.0,
+            "min": 3.0,
+            "max": 3.0,
+            "count": 1
+        },
+        "DroneCSI.Environment.LessonNumber.parcours_difficulty.sum": {
+            "value": 3.0,
+            "min": 3.0,
+            "max": 3.0,
+            "count": 1
+        },
+        "DroneCSI.Step.mean": {
+            "value": 49924.0,
+            "min": 49924.0,
+            "max": 49924.0,
+            "count": 1
+        },
+        "DroneCSI.Step.sum": {
+            "value": 49924.0,
+            "min": 49924.0,
+            "max": 49924.0,
+            "count": 1
+        },
+        "DroneCSI.Policy.ExtrinsicValueEstimate.mean": {
+            "value": 0.030529910698533058,
+            "min": 0.030529910698533058,
+            "max": 0.030529910698533058,
+            "count": 1
+        },
+        "DroneCSI.Policy.ExtrinsicValueEstimate.sum": {
+            "value": 16.79145050048828,
+            "min": 16.79145050048828,
+            "max": 16.79145050048828,
+            "count": 1
+        },
+        "DroneCSI.Policy.GailValueEstimate.mean": {
+            "value": 8.735069274902344,
+            "min": 8.735069274902344,
+            "max": 8.735069274902344,
+            "count": 1
+        },
+        "DroneCSI.Policy.GailValueEstimate.sum": {
+            "value": 4804.2880859375,
+            "min": 4804.2880859375,
+            "max": 4804.2880859375,
+            "count": 1
+        },
+        "DroneCSI.Environment.EpisodeLength.mean": {
+            "value": 104.32489451476793,
+            "min": 104.32489451476793,
+            "max": 104.32489451476793,
+            "count": 1
+        },
+        "DroneCSI.Environment.EpisodeLength.sum": {
+            "value": 49450.0,
+            "min": 49450.0,
+            "max": 49450.0,
+            "count": 1
+        },
+        "DroneCSI.Environment.CumulativeReward.mean": {
+            "value": 1.0150689770652273,
+            "min": 1.0150689770652273,
+            "max": 1.0150689770652273,
+            "count": 1
+        },
+        "DroneCSI.Environment.CumulativeReward.sum": {
+            "value": 481.1426951289177,
+            "min": 481.1426951289177,
+            "max": 481.1426951289177,
+            "count": 1
+        },
+        "DroneCSI.Policy.ExtrinsicReward.mean": {
+            "value": 0.3045207036046099,
+            "min": 0.3045207036046099,
+            "max": 0.3045207036046099,
+            "count": 1
+        },
+        "DroneCSI.Policy.ExtrinsicReward.sum": {
+            "value": 144.3428135085851,
+            "min": 144.3428135085851,
+            "max": 144.3428135085851,
+            "count": 1
+        },
+        "DroneCSI.Policy.GailReward.mean": {
+            "value": 39.12416381714571,
+            "min": 39.12416381714571,
+            "max": 39.12416381714571,
+            "count": 1
+        },
+        "DroneCSI.Policy.GailReward.sum": {
+            "value": 18544.853649327066,
+            "min": 18544.853649327066,
+            "max": 18544.853649327066,
+            "count": 1
+        },
+        "DroneCSI.Losses.PolicyLoss.mean": {
+            "value": 0.04848090384283902,
+            "min": 0.04848090384283902,
+            "max": 0.04848090384283902,
+            "count": 1
+        },
+        "DroneCSI.Losses.PolicyLoss.sum": {
+            "value": 0.5817708461140683,
+            "min": 0.5817708461140683,
+            "max": 0.5817708461140683,
+            "count": 1
+        },
+        "DroneCSI.Losses.ValueLoss.mean": {
+            "value": 5.654916933272034,
+            "min": 5.654916933272034,
+            "max": 5.654916933272034,
+            "count": 1
+        },
+        "DroneCSI.Losses.ValueLoss.sum": {
+            "value": 67.85900319926441,
+            "min": 67.85900319926441,
+            "max": 67.85900319926441,
+            "count": 1
+        },
+        "DroneCSI.Policy.LearningRate.mean": {
+            "value": 4.9107087896938896e-05,
+            "min": 4.9107087896938896e-05,
+            "max": 4.9107087896938896e-05,
+            "count": 1
+        },
+        "DroneCSI.Policy.LearningRate.sum": {
+            "value": 0.0005892850547632668,
+            "min": 0.0005892850547632668,
+            "max": 0.0005892850547632668,
+            "count": 1
+        },
+        "DroneCSI.Policy.Epsilon.mean": {
+            "value": 0.09999999999999999,
+            "min": 0.09999999999999999,
+            "max": 0.09999999999999999,
+            "count": 1
+        },
+        "DroneCSI.Policy.Epsilon.sum": {
+            "value": 1.2,
+            "min": 1.2,
+            "max": 1.2,
+            "count": 1
+        },
+        "DroneCSI.Policy.Beta.mean": {
+            "value": 0.009821595805,
+            "min": 0.009821595805,
+            "max": 0.009821595805,
+            "count": 1
+        },
+        "DroneCSI.Policy.Beta.sum": {
+            "value": 0.11785914966,
+            "min": 0.11785914966,
+            "max": 0.11785914966,
+            "count": 1
+        },
+        "DroneCSI.Policy.GAILPolicyEstimate.mean": {
+            "value": 0.2837890609613775,
+            "min": 0.2837890609613775,
+            "max": 0.2837890609613775,
+            "count": 1
+        },
+        "DroneCSI.Policy.GAILPolicyEstimate.sum": {
+            "value": 3.40546873153653,
+            "min": 3.40546873153653,
+            "max": 3.40546873153653,
+            "count": 1
+        },
+        "DroneCSI.Policy.GAILExpertEstimate.mean": {
+            "value": 0.719362941221334,
+            "min": 0.719362941221334,
+            "max": 0.719362941221334,
+            "count": 1
+        },
+        "DroneCSI.Policy.GAILExpertEstimate.sum": {
+            "value": 8.632355294656008,
+            "min": 8.632355294656008,
+            "max": 8.632355294656008,
+            "count": 1
+        },
+        "DroneCSI.Losses.GAILLoss.mean": {
+            "value": 0.8178289270338913,
+            "min": 0.8178289270338913,
+            "max": 0.8178289270338913,
+            "count": 1
+        },
+        "DroneCSI.Losses.GAILLoss.sum": {
+            "value": 9.813947124406695,
+            "min": 9.813947124406695,
+            "max": 9.813947124406695,
+            "count": 1
+        },
+        "DroneCSI.Policy.GAILGradMagLoss.mean": {
+            "value": 9.940153270959854,
+            "min": 9.940153270959854,
+            "max": 9.940153270959854,
+            "count": 1
+        },
+        "DroneCSI.Policy.GAILGradMagLoss.sum": {
+            "value": 119.28183925151825,
+            "min": 119.28183925151825,
+            "max": 119.28183925151825,
+            "count": 1
+        },
+        "DroneCSI.Losses.PretrainingLoss.mean": {
+            "value": 1.044266958725758,
+            "min": 1.044266958725758,
+            "max": 1.044266958725758,
+            "count": 1
+        },
+        "DroneCSI.Losses.PretrainingLoss.sum": {
+            "value": 12.531203504709097,
+            "min": 12.531203504709097,
+            "max": 12.531203504709097,
+            "count": 1
+        },
+        "DroneCSI.IsTraining.mean": {
+            "value": 1.0,
+            "min": 1.0,
+            "max": 1.0,
+            "count": 1
+        },
+        "DroneCSI.IsTraining.sum": {
+            "value": 1.0,
+            "min": 1.0,
+            "max": 1.0,
+            "count": 1
+        }
+    },
+    "metadata": {
+        "timer_format_version": "0.1.0",
+        "start_time_seconds": "1773138037",
+        "python_version": "3.10.12 (main, Jul  5 2023, 18:54:27) [GCC 11.2.0]",
+        "command_line_arguments": "/home/nileneb/miniconda3/envs/mlagents/bin/mlagents-learn config/drone_training.yaml --run-id=v7_4",
+        "mlagents_version": "1.1.0",
+        "mlagents_envs_version": "1.1.0",
+        "communication_protocol_version": "1.5.0",
+        "pytorch_version": "2.4.1+cu124",
+        "numpy_version": "1.23.5",
+        "end_time_seconds": "1773140302"
+    },
+    "total": 2265.0588450939977,
+    "count": 1,
+    "self": 0.005877332994714379,
+    "children": {
+        "run_training.setup": {
+            "total": 0.01666673200088553,
+            "count": 1,
+            "self": 0.01666673200088553
+        },
+        "TrainerController.start_learning": {
+            "total": 2265.036301029002,
+            "count": 1,
+            "self": 1.526140898145968,
+            "children": {
+                "TrainerController._reset_env": {
+                    "total": 12.937608687992906,
+                    "count": 1,
+                    "self": 7.443684650002979,
+                    "children": {
+                        "demo_to_buffer": {
+                            "total": 5.4939240379899275,
+                            "count": 2,
+                            "self": 9.542793850414455e-05,
+                            "children": {
+                                "load_demonstration": {
+                                    "total": 0.1323882310243789,
+                                    "count": 2,
+                                    "self": 0.11083079702802934,
+                                    "children": {
+                                        "read_file": {
+                                            "total": 0.021557433996349573,
+                                            "count": 2,
+                                            "self": 0.021557433996349573
+                                        }
+                                    }
+                                },
+                                "make_demo_buffer": {
+                                    "total": 5.361440379027044,
+                                    "count": 2,
+                                    "self": 0.14976466589723714,
+                                    "children": {
+                                        "steps_from_proto": {
+                                            "total": 5.211675713129807,
+                                            "count": 6900,
+                                            "self": 0.4844738761894405,
+                                            "children": {
+                                                

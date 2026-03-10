@@ -1,0 +1,32 @@
+{
+    "parcours_difficulty": {
+        "lesson_num": 0
+    },
+    "DroneCSI": {
+        "checkpoints": [
+            {
+                "steps": 19857,
+                "file_path": "results/v7_2/DroneCSI/DroneCSI-19857.onnx",
+                "reward": -14.28507886081934,
+                "creation_time": 1773106024.7721364,
+                "auxillary_file_paths": [
+                    "results/v7_2/DroneCSI/DroneCSI-19857.pt"
+                ]
+            }
+        ],
+        "final_checkpoint": {
+            "steps": 19857,
+            "file_path": "results/v7_2/DroneCSI.onnx",
+            "reward": -14.28507886081934,
+            "creation_time": 1773106024.7721364,
+            "auxillary_file_paths": [
+                "results/v7_2/DroneCSI/DroneCSI-19857.pt"
+            ]
+        }
+    },
+    "metadata": {
+        "stats_format_version": "0.3.0",
+        "mlagents_version": "1.1.0",
+        "torch_version": "2.4.1+cu124"
+    }
+}
