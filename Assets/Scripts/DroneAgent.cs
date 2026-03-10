@@ -23,7 +23,6 @@ public class DroneAgent : Agent
 {
     SimulatedDroneController _drone;
     Rigidbody _rb;
-    ObjectDetectionReward _detection;
 
     // ═══════════════════════ Parcour-System ═══════════════════════
 
@@ -36,10 +35,6 @@ public class DroneAgent : Agent
     public float allTargetsBonus = 2.0f;
     public float groundPenalty = -1.0f;
     public float wallPenalty = -1.5f;
-
-    [Header("Observation Target (Bodenkamera)")]
-    [Tooltip("Objekt das die Bodenkamera im Blick halten soll (optional).")]
-    public Transform observationTarget;
 
     [Header("Crash Detection")]
     [Tooltip("Crash-Detection aktivieren? Fuer manuelles Testen AUSSCHALTEN!")]
@@ -75,6 +70,19 @@ public class DroneAgent : Agent
     int _stepsInEpisode;
     bool _isEpisodeEnding;
     int _defaultEpisodeStepLimit;
+    int _currentTargetIndex;
+    float _previousDistance;
+
+    [Header("Hindernisse")]
+    [Tooltip("Hindernisse die ab Level 3 aktiviert werden.")]
+    public List<GameObject> obstacles = new List<GameObject>();
+
+    [Header("Curriculum")]
+    [Tooltip("-1 = automatisch (vom Trainer). 0-3 = manueller Override (z.B. fuer Demo-Aufnahme).")]
+    public int overrideCurriculumLevel = -1;
+
+    [Header("Parcours Varianten")]
+    public List<ParcourLayout> parcourLayouts = new List<ParcourLayout>();
 
     public override void Initialize()
     {
@@ -83,7 +91,6 @@ public class DroneAgent : Agent
 
         _drone = GetComponent<SimulatedDroneController>();
         _rb = GetComponent<Rigidbody>();
-        _detection = GetComponent<ObjectDetectionReward>();
         _spawnPosition = transform.position;
 
         Debug.Log($"[DroneAgent] Initialize OK. MaxStep={MaxStep}, episodeStepLimit={episodeStepLimit}, SpawnY={_spawnPosition.y:F2}");
@@ -227,35 +234,41 @@ public class DroneAgent : Agent
     {
         if (hitObject == null || targets == null || targets.Count == 0)
             return;
-    int idx = targets.IndexOf(hitObject);
-    if (idx < 0) return;
 
-    _targetsCollected++;
-    
-    // ═══ NEU: Multiplikator-Reward ═══
-    // 1. Target = 1×, 2. = 2×, 3. = 3×, 4. = 4×
-    float scaledReward = targetReward * _targetsCollected;
-    AddReward(scaledReward);
-    
-    // ═══ NEU: Bonus-Steps pro Target (+500) ═══
-    // Der Agent wird nicht bestraft, weil er langsam war,
-    // sondern bekommt Zeit geschenkt. Kombiniert mit dem Multiplikator
-    // entsteht ein doppelter Anreiz (mehr Reward + mehr Zeit).
-    episodeStepLimit += 500;
-    MaxStep = episodeStepLimit;  // Beide in Sync halten
-    
-    Debug.Log($"[DroneAgent] Target '{hitObject.name}' ({_targetsCollected}/{_totalTargets}) " +
-              $"Reward: {scaledReward:F1} (Multiplikator: {_targetsCollected}x) | " +
-              $"episodeStepLimit now: {episodeStepLimit} (+500)");
-    
-    hitObject.SetActive(false);
+        // Nur das aktuell geforderte Target akzeptieren.
+        GameObject currentTarget = GetNextActiveTarget();
+        if (currentTarget == null || hitObject != currentTarget)
+            return;
 
-    if (_targetsCollected >= _totalTargets && _totalTargets > 0)
-    {
-        Debug.Log("[DroneAgent] Alle Targets! Bonus + Episode-Ende");
-        AddReward(allTargetsBonus);
-        EndCurrentEpisode("all targets collected");
-    }
+        _targetsCollected++;
+
+        // Zeitfaktor: schneller eingesammelt = mehr Reward (bis 2x)
+        float timeFactor = 1f + (float)(episodeStepLimit - _stepsInEpisode) / episodeStepLimit;
+
+        // Multiplikator-Reward: 1.,2.,3.,4. Target wird zunehmend belohnt + Zeitbonus.
+        float scaledReward = targetReward * _targetsCollected * timeFactor;
+        AddReward(scaledReward);
+
+        // Bonus-Steps pro erreichtem Target.
+        episodeStepLimit += 500;
+        MaxStep = episodeStepLimit;
+
+        Debug.Log($"[DroneAgent] Target '{hitObject.name}' ({_targetsCollected}/{_totalTargets}) " +
+                  $"Reward: {scaledReward:F1} | episodeStepLimit: {episodeStepLimit}");
+
+        hitObject.SetActive(false);
+        _currentTargetIndex++;
+        UpdateTargetVisuals();
+
+        // Distanz zum neuen Target initialisieren (damit kein falscher Delta-Reward)
+        _previousDistance = GetDistanceToCurrentTarget();
+
+        if (_targetsCollected >= _totalTargets && _totalTargets > 0)
+        {
+            Debug.Log("[DroneAgent] Alle Targets! Bonus + Episode-Ende");
+            AddReward(allTargetsBonus);
+            EndCurrentEpisode("all targets collected");
+        }
     }
 
 
@@ -264,6 +277,7 @@ public class DroneAgent : Agent
     void RestoreTargets()
     {
         _targetsCollected = 0;
+        _currentTargetIndex = 0;
         _hasReachedSafeAltitude = false;
         for (int i = 0; i < targets.Count; i++)
         {
@@ -274,6 +288,65 @@ public class DroneAgent : Agent
                 targets[i].transform.rotation = _targetStartRotations[i];
                 targets[i].transform.localScale = _targetStartScales[i];
             }
+        }
+    }
+
+    void UpdateTargetVisuals()
+    {
+        // Nur aktuelles Target sichtbar, Rest ausgeblendet.
+        // Targets jenseits _totalTargets bleiben immer aus (Curriculum).
+        for (int i = 0; i < targets.Count; i++)
+        {
+            if (targets[i] == null)
+                continue;
+
+            targets[i].SetActive(i == _currentTargetIndex && i < _totalTargets);
+        }
+    }
+
+    // ═══════════════════════ Curriculum ═══════════════════════
+
+    void ConfigureParcours(int level)
+    {
+        _totalTargets = GetTargetCountForLevel(level);
+        _currentTargetIndex = 0;
+        _targetsCollected = 0;
+
+        // Zufällige Route aus verfügbaren Layouts wählen (falls vorhanden)
+        if (parcourLayouts.Count > 0)
+        {
+            int layoutIndex = Random.Range(0, parcourLayouts.Count);
+            ParcourLayout layout = parcourLayouts[layoutIndex];
+
+            for (int i = 0; i < targets.Count && i < layout.targetPositions.Count; i++)
+            {
+                if (targets[i] != null && layout.targetPositions[i] != null)
+                    targets[i].transform.position = layout.targetPositions[i].position;
+            }
+
+            Debug.Log($"[DroneAgent] Parcours: {layout.name}, Level: {level}");
+        }
+
+        EnableObstacles(level >= 3);
+        UpdateTargetVisuals();
+    }
+
+    int GetTargetCountForLevel(int level)
+    {
+        switch (level)
+        {
+            case 0: return Mathf.Min(1, targets.Count);
+            case 1: return Mathf.Min(2, targets.Count);
+            default: return targets.Count;
+        }
+    }
+
+    void EnableObstacles(bool enable)
+    {
+        for (int i = 0; i < obstacles.Count; i++)
+        {
+            if (obstacles[i] != null)
+                obstacles[i].SetActive(enable);
         }
     }
 
@@ -289,14 +362,29 @@ public class DroneAgent : Agent
         episodeStepLimit = _defaultEpisodeStepLimit;
         MaxStep = episodeStepLimit;  // Beide in Sync halten
 
-        if (_detection != null)
-            _detection.ResetTracking();
-
         if (_drone != null)
             _drone.ResetController(_spawnPosition, Quaternion.identity);
 
         RestoreTargets();
-        Debug.Log($"[DroneAgent] Episode-Reset. episodeStepLimit reset to {episodeStepLimit}, MaxStep={MaxStep}");
+
+        // Curriculum-Level bestimmen: Override oder vom Trainer
+        int level;
+        if (overrideCurriculumLevel >= 0)
+        {
+            level = overrideCurriculumLevel;
+        }
+        else
+        {
+            float difficulty = Academy.Instance.EnvironmentParameters
+                                .GetWithDefault("parcours_difficulty", 0f);
+            level = (int)difficulty;
+        }
+        ConfigureParcours(level);
+
+        // Initiale Distanz zum ersten Target setzen
+        _previousDistance = GetDistanceToCurrentTarget();
+
+        Debug.Log($"[DroneAgent] Episode-Reset. Level={level}, Targets={_totalTargets}, episodeStepLimit={episodeStepLimit}, MaxStep={MaxStep}");
     }
 
     public override void CollectObservations(VectorSensor sensor)
@@ -335,17 +423,25 @@ public class DroneAgent : Agent
 
     GameObject GetNextActiveTarget()
     {
-        float minDist = float.MaxValue;
-        GameObject closest = null;
-        foreach (var t in targets)
+        // Sequentiell: immer erstes noch aktives Target ab aktuellem Index.
+        for (int i = Mathf.Max(_currentTargetIndex, 0); i < targets.Count; i++)
         {
-            if (t != null && t.activeSelf)
+            if (targets[i] != null && targets[i].activeSelf)
             {
-                float d = Vector3.Distance(transform.position, t.transform.position);
-                if (d < minDist) { minDist = d; closest = t; }
+                _currentTargetIndex = i;
+                return targets[i];
             }
         }
-        return closest;
+
+        return null;
+    }
+
+    float GetDistanceToCurrentTarget()
+    {
+        GameObject t = GetNextActiveTarget();
+        if (t == null) return 0f;
+        Vector3 d = t.transform.position - transform.position;
+        return Mathf.Sqrt(d.x * d.x + d.z * d.z + d.y * d.y * 4f);
     }
 
     public override void OnActionReceived(ActionBuffers actions)
@@ -385,39 +481,29 @@ public class DroneAgent : Agent
                 _drone.Move(fwd, left, up, turn);
         }
 
-        // Distanz-basierter Reward + Detection-Reward
+        // ═══════════════════ DISTANZ-GRADIENT (Delta-basiert) ═══════════════════
         GameObject next = GetNextActiveTarget();
         if (next != null)
         {
-            // Y (Hoehe) wird staerker gewichtet als X/Z (horizontal)
             Vector3 delta = next.transform.position - transform.position;
             float weightedDist = Mathf.Sqrt(delta.x * delta.x + delta.z * delta.z + delta.y * delta.y * 4f);
-            // Strafe skaliert mit gewichteter Distanz → Agent wird zum Target gezogen
-            AddReward(-weightedDist * 0.0001f);
-
-            // Detection-Reward: Sichtbarkeit + Annaeherung (nur wenn Component vorhanden)
-            if (_detection != null)
+            
+            // Delta-Reward: naeher kommen = positiv, weiter weg = negativ
+            // Kein Akkumulationsproblem mehr!
+            float distanceDelta = _previousDistance - weightedDist;
+            AddReward(distanceDelta * 0.5f);
+            _previousDistance = weightedDist;
+            
+            // Proximity-Bonus unter 3m: positiver Reward zieht den Agent rein
+            if (weightedDist < 3f)
             {
-                float detReward = _detection.CheckDetection(next.transform);
-                if (detReward > 0f)
-                    AddReward(detReward);
+                float proximityBonus = (3f - weightedDist) * 0.01f;  // +0.03 bei 0m
+                AddReward(proximityBonus);
             }
         }
-        else
-        {
-            // Alle Targets eingesammelt → kein Distanz-Reward noetig
-        }
 
-        // Beobachtungstarget: kleiner Reward fuers im-Blick-halten (Bodenkamera)
-        if (_detection != null && observationTarget != null)
-        {
-            float obsReward = _detection.CheckObservation(observationTarget);
-            if (obsReward > 0f)
-                AddReward(obsReward);
-        }
-
-        // Kleine Step-Strafe (reduziert gegenueber vorher)
-        AddReward(-0.0001f);
+        // Step-Penalty (minimal — Agent soll nicht gehetzt werden)
+        //AddReward(-0.00001f);
     }
 
     public override void Heuristic(in ActionBuffers actionsOut)
@@ -434,7 +520,14 @@ public class DroneAgent : Agent
         if (Input.GetKey(KeyCode.D)) ca[1] = -1f;
         if (Input.GetKey(KeyCode.Space)) ca[2] = 1f;
         if (Input.GetKey(KeyCode.LeftShift)) ca[2] = -1f;
-        if (Input.GetKey(KeyCode.Q)) ca[3] = 1f;
-        if (Input.GetKey(KeyCode.E)) ca[3] = -1f;
+        if (Input.GetKey(KeyCode.E)) ca[3] = 1f;
+        if (Input.GetKey(KeyCode.Q)) ca[3] = -1f;
     }
+}
+
+[System.Serializable]
+public class ParcourLayout
+{
+    public string name;
+    public List<Transform> targetPositions;
 }
