@@ -6,20 +6,32 @@ public class DroneScarer : MonoBehaviour
     [Header("Scarer")]
     public float radius = 6f;
     public float duration = 3f;
+    public float cooldown = 8f;
     public float pushForce = 8f;
     public Light scarerLight;
     public AudioSource scarerAudio;
     public ParticleSystem scarerParticles;
 
     public bool IsActive { get; private set; }
+    public bool IsReady => !IsActive && _cooldownRemaining <= 0f;
+    public float ActiveFraction => IsActive ? _activeElapsed / duration : 0f;
+    public float CooldownFraction => _cooldownRemaining > 0f ? _cooldownRemaining / cooldown : 0f;
 
     int _dronePlayerId;
+    float _cooldownRemaining;
+    float _activeElapsed;
+
+    void Update()
+    {
+        if (_cooldownRemaining > 0f)
+            _cooldownRemaining -= Time.deltaTime;
+    }
 
     public void SetPlayerId(int id) => _dronePlayerId = id;
 
     public void Activate()
     {
-        if (IsActive) return;
+        if (IsActive || !IsReady) return;
         StartCoroutine(ScarerRoutine());
 
         if (RevbClient.Instance != null)
@@ -32,17 +44,18 @@ public class DroneScarer : MonoBehaviour
     IEnumerator ScarerRoutine()
     {
         IsActive = true;
+        _activeElapsed = 0f;
         SetVisuals(true);
 
-        float elapsed = 0f;
-        while (elapsed < duration)
+        while (_activeElapsed < duration)
         {
             PushNearbyWolves();
-            elapsed += Time.deltaTime;
+            _activeElapsed += Time.deltaTime;
             yield return null;
         }
 
         IsActive = false;
+        _cooldownRemaining = cooldown;
         SetVisuals(false);
     }
 
