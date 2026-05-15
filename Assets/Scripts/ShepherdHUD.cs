@@ -17,6 +17,11 @@ public class ShepherdHUD : MonoBehaviour
     public GameObject scarerCooldownRoot;
     public Image scarerCooldownBar;
 
+    [Header("Wolf Only")]
+    public GameObject fearBarRoot;
+    public Image fearBarFill;
+    public Text fearLabel;
+
     [Header("End Screen")]
     public GameObject endScreen;
     public Text resultTitleText;
@@ -24,6 +29,7 @@ public class ShepherdHUD : MonoBehaviour
 
     DronePlayer _dronePlayer;
     DroneScarer _scarer;
+    WolfFear _wolfFear;
 
     void Start()
     {
@@ -37,6 +43,13 @@ public class ShepherdHUD : MonoBehaviour
         if (scarerCooldownRoot != null) scarerCooldownRoot.SetActive(isDrone);
         if (roleText != null) roleText.text = isDrone ? "🚁 Drohne" : "🐺 Wolf";
         if (endScreen != null) endScreen.SetActive(false);
+
+        if (!isDrone)
+        {
+            var wolf = FindFirstObjectByType<WolfPlayer>();
+            if (wolf != null) _wolfFear = wolf.GetComponent<WolfFear>();
+        }
+        if (fearBarRoot != null) fearBarRoot.SetActive(!isDrone && _wolfFear != null);
 
         if (sessionCodeText != null)
         {
@@ -54,6 +67,7 @@ public class ShepherdHUD : MonoBehaviour
         UpdateTimer();
         UpdateScore();
         UpdateScarerBar();
+        UpdateFearBar();
     }
 
     void UpdateTimer()
@@ -83,6 +97,18 @@ public class ShepherdHUD : MonoBehaviour
         float fill = _scarer.IsActive ? (1f - _scarer.ActiveFraction) : (1f - _scarer.CooldownFraction);
         scarerCooldownBar.fillAmount = Mathf.Clamp01(fill);
         scarerCooldownBar.color = _scarer.IsReady ? new Color(0.3f, 0.8f, 1f) : Color.gray;
+    }
+
+    void UpdateFearBar()
+    {
+        if (fearBarFill == null || _wolfFear == null) return;
+        fearBarFill.fillAmount = _wolfFear.Fear;
+        bool panicking = _wolfFear.IsPanicking;
+        fearBarFill.color = panicking
+            ? (Time.time % 0.3f < 0.15f ? Color.red : new Color(1f, 0.4f, 0f))
+            : Color.Lerp(new Color(1f, 0.8f, 0f), Color.red, _wolfFear.Fear);
+        if (fearLabel != null)
+            fearLabel.text = panicking ? "PANIC!" : $"Furcht: {Mathf.RoundToInt(_wolfFear.Fear * 100)}%";
     }
 
     public void ShowEndScreen(int sheepSaved, int sheepCaught, float duration)
