@@ -30,6 +30,8 @@ public class ShepherdGameManager : MonoBehaviour
     public string apiBase = "https://app.linn.games/api/shepherd";
 
     public List<Transform> ActiveSheep { get; } = new();
+    public float ElapsedTime => _elapsed;
+    public int SheepCaught => _sheepCaught;
 
     string _sessionCode;
     string _jwt;
@@ -192,9 +194,12 @@ public class ShepherdGameManager : MonoBehaviour
         _running = false;
         _sheepSaved = ActiveSheep.Count;
 
+        // Legacy direct-UI fallback (usually null when ShepherdHUD is active)
         if (endScreen) endScreen.SetActive(true);
         if (endResultText)
             endResultText.text = $"Sheep Saved: {_sheepSaved}\nSheep Caught: {_sheepCaught}";
+
+        FindObjectOfType<ShepherdHUD>()?.ShowEndScreen(_sheepSaved, _sheepCaught, _elapsed);
 
         StartCoroutine(PostEnd());
     }
