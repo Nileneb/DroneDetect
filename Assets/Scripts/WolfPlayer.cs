@@ -15,6 +15,7 @@ public class WolfPlayer : MonoBehaviour
     public bool IsLocal { get; set; }
 
     CharacterController _cc;
+    WolfFear _fear;
     readonly Dictionary<int, Transform> _remoteWolves = new();
     ShepherdGameManager _gm;
 
@@ -22,7 +23,8 @@ public class WolfPlayer : MonoBehaviour
 
     void Start()
     {
-        _gm = FindObjectOfType<ShepherdGameManager>();
+        _gm = FindFirstObjectByType<ShepherdGameManager>();
+        _fear = GetComponent<WolfFear>();
         if (IsLocal && RevbClient.Instance != null)
             RevbClient.Instance.OnEvent += HandleNetEvent;
     }
@@ -30,6 +32,7 @@ public class WolfPlayer : MonoBehaviour
     void Update()
     {
         if (!IsLocal) return;
+        if (_fear != null && _fear.IsPanicking) { SendPositionThrottled(); return; }
 
         float h = Input.GetAxis("Horizontal");
         float v = Input.GetAxis("Vertical");

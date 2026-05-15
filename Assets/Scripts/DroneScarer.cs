@@ -8,9 +8,11 @@ public class DroneScarer : MonoBehaviour
     public float duration = 3f;
     public float cooldown = 8f;
     public float pushForce = 8f;
+    public float fearGainRate = 0.5f;
     public Light scarerLight;
     public AudioSource scarerAudio;
     public ParticleSystem scarerParticles;
+    public LineRenderer fearBeam;
 
     public bool IsActive { get; private set; }
     public bool IsReady => !IsActive && _cooldownRemaining <= 0f;
@@ -62,17 +64,39 @@ public class DroneScarer : MonoBehaviour
     void PushNearbyWolves()
     {
         var hits = Physics.OverlapSphere(transform.position, radius);
+        WolfPlayer nearestWolf = null;
+        float nearestDist = float.MaxValue;
+
         foreach (var h in hits)
         {
             var wolf = h.GetComponent<WolfPlayer>();
-            if (wolf != null && wolf.IsLocal)
+            if (wolf == null) continue;
+
+            if (wolf.IsLocal)
+            {
                 wolf.PushAway(transform.position, pushForce);
+                wolf.GetComponent<WolfFear>()?.AddFear(fearGainRate);
+            }
+
+            float d = Vector3.Distance(transform.position, wolf.transform.position);
+            if (d < nearestDist) { nearestDist = d; nearestWolf = wolf; }
+        }
+
+        if (fearBeam != null)
+        {
+            fearBeam.enabled = nearestWolf != null;
+            if (nearestWolf != null)
+            {
+                fearBeam.SetPosition(0, transform.position);
+                fearBeam.SetPosition(1, nearestWolf.transform.position + Vector3.up * 0.5f);
+            }
         }
     }
 
     void SetVisuals(bool on)
     {
         if (scarerLight) scarerLight.enabled = on;
+        if (fearBeam != null && !on) fearBeam.enabled = false;
         if (on && scarerParticles) scarerParticles.Play();
         else if (!on && scarerParticles) scarerParticles.Stop();
         if (scarerAudio)
