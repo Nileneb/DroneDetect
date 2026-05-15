@@ -26,7 +26,7 @@ public class DronePlayer : MonoBehaviour
 
     void Start()
     {
-        _gm = FindObjectOfType<ShepherdGameManager>();
+        _gm = FindFirstObjectByType<ShepherdGameManager>();
         if (IsLocal && RevbClient.Instance != null)
             RevbClient.Instance.OnEvent += HandleNetEvent;
     }
@@ -49,7 +49,10 @@ public class DronePlayer : MonoBehaviour
         }
 
         if (Input.GetKeyDown(KeyCode.F) && scarer != null)
+        {
             scarer.Activate();
+            _gm?.RecordEvent("scarer_activated");
+        }
 
         SendPositionThrottled();
     }

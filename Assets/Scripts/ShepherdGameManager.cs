@@ -127,11 +127,18 @@ public class ShepherdGameManager : MonoBehaviour
     IEnumerator RoundTimer()
     {
         _elapsed = 0f;
+        int lastRecordedTick = -1;
         while (_elapsed < roundDuration && _running)
         {
             _elapsed += Time.deltaTime;
             _tickCounter = Mathf.FloorToInt(_elapsed * 20f);
             UpdateHUD();
+            // Record position at 4Hz (every 5 ticks of 20Hz)
+            if (_tickCounter != lastRecordedTick && _tickCounter % 5 == 0)
+            {
+                lastRecordedTick = _tickCounter;
+                RecordEvent("move");
+            }
             yield return null;
         }
         if (_running) EndRound();
