@@ -29,6 +29,11 @@ public class ShepherdGameManager : MonoBehaviour
     public float roundDuration = 180f;
     public string apiBase = "https://app.linn.games/api/shepherd";
 
+#if UNITY_EDITOR
+    [Header("Editor Only")]
+    public string editorRole = "wolf";
+#endif
+
     public List<Transform> ActiveSheep { get; } = new();
     public float ElapsedTime => _elapsed;
     public int SheepCaught => _sheepCaught;
@@ -71,7 +76,7 @@ public class ShepherdGameManager : MonoBehaviour
 #if UNITY_EDITOR
             _sessionCode = "EDITOR";
             _jwt = "dev-token";
-            _localRole = "wolf";
+            _localRole = editorRole;
             IsHost = true;
 #else
             Debug.LogError("[ShepherdGM] Missing session/token URL params");
@@ -154,8 +159,8 @@ public class ShepherdGameManager : MonoBehaviour
     public void RecordEvent(string action)
     {
         var go = _localRole == "wolf"
-            ? (Component)FindObjectOfType<WolfPlayer>()
-            : FindObjectOfType<DronePlayer>();
+            ? (Component)FindFirstObjectByType<WolfPlayer>()
+            : FindFirstObjectByType<DronePlayer>();
         if (go == null) return;
 
         var p = go.transform.position;
@@ -199,7 +204,7 @@ public class ShepherdGameManager : MonoBehaviour
         if (endResultText)
             endResultText.text = $"Sheep Saved: {_sheepSaved}\nSheep Caught: {_sheepCaught}";
 
-        FindObjectOfType<ShepherdHUD>()?.ShowEndScreen(_sheepSaved, _sheepCaught, _elapsed);
+        FindFirstObjectByType<ShepherdHUD>()?.ShowEndScreen(_sheepSaved, _sheepCaught, _elapsed);
 
         StartCoroutine(PostEnd());
     }

@@ -24,13 +24,12 @@ public class ShepherdHUD : MonoBehaviour
 
     DronePlayer _dronePlayer;
     DroneScarer _scarer;
-    float _scarerMaxDuration = 3f;
 
     void Start()
     {
-        if (gm == null) gm = FindObjectOfType<ShepherdGameManager>();
+        if (gm == null) gm = FindFirstObjectByType<ShepherdGameManager>();
 
-        _dronePlayer = FindObjectOfType<DronePlayer>();
+        _dronePlayer = FindFirstObjectByType<DronePlayer>();
         if (_dronePlayer != null)
             _scarer = _dronePlayer.scarer;
 
