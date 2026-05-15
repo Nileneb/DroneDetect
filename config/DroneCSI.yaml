@@ -14,11 +14,50 @@ behaviors:
       normalize: true
       hidden_units: 256
       num_layers: 3
+      vis_encode_type: simple
     reward_signals:
       extrinsic:
         gamma: 0.995
         strength: 1.0
-    max_steps: 500000
+    max_steps: 1000000
     time_horizon: 256
     summary_freq: 10000
     keep_checkpoints: 10
+
+environment_parameters:
+  parcours_difficulty:
+    curriculum:
+      - name: Level0
+        completion_criteria:
+          measure: reward
+          behavior: DroneCSI
+          signal_smoothing: true
+          min_lesson_length: 100
+          threshold: 1.5
+        value: 0
+      - name: Level1
+        completion_criteria:
+          measure: reward
+          behavior: DroneCSI
+          signal_smoothing: true
+          min_lesson_length: 100
+          threshold: 2.5
+        value: 1
+      - name: Level2
+        completion_criteria:
+          measure: reward
+          behavior: DroneCSI
+          signal_smoothing: true
+          min_lesson_length: 100
+          threshold: 3.5
+        value: 2
+      - name: Level3
+        completion_criteria:
+          measure: reward
+          behavior: DroneCSI
+          signal_smoothing: true
+          min_lesson_length: 100
+          threshold: 5.0
+        value: 3
+      - name: Level4
+        value: 4
