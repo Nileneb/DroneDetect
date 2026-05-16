@@ -75,17 +75,22 @@ public class ShepherdGameManager : MonoBehaviour
         if (endScreen) endScreen.SetActive(false);
     }
 
+    string _aiRole;  // if set, the opposite seat is an AI bot — spawn locally
+
     void Start()
     {
         Debug.Log("[ShepherdGM] Start() invoked");
         foreach (var s in sheep) ActiveSheep.Add(s.transform);
         InitialSheepCount = sheep != null ? sheep.Length : 0;
 
-        // Read token + session from URL params via JS interop
-        _sessionCode = GetUrlParam("session");
-        _jwt = GetUrlParam("token");
-        _localRole = GetUrlParam("role");
-        bool isHostParam = GetUrlParam("host") == "1";
+        // Read session config: PlayerPrefs (set by MatchmakeManager) wins, fall back to URL/CLI
+        _sessionCode = PlayerPrefs.GetString("shepherd_session", GetUrlParam("session"));
+        _jwt         = PlayerPrefs.GetString("shepherd_token",   GetUrlParam("token"));
+        _localRole   = PlayerPrefs.GetString("shepherd_role",    GetUrlParam("role"));
+        _aiRole      = PlayerPrefs.GetString("shepherd_ai_role", "");
+        bool isHostParam = PlayerPrefs.HasKey("shepherd_host")
+                           ? PlayerPrefs.GetInt("shepherd_host") == 1
+                           : GetUrlParam("host") == "1";
         IsHost = isHostParam;
         Debug.Log($"[ShepherdGM] params session={_sessionCode}, jwt-len={_jwt?.Length}, role={_localRole}, host={IsHost}");
 
@@ -135,8 +140,68 @@ public class ShepherdGameManager : MonoBehaviour
         else
             SpawnLocalDrone();
 
+        // AI fallback: spawn the OPPOSITE side as a bot if matchmaking told us to
+        if (!string.IsNullOrEmpty(_aiRole))
+        {
+            Debug.Log("[ShepherdGM] Spawning AI bot for role: " + _aiRole);
+            SpawnAiBot(_aiRole);
+        }
+
         if (IsHost)
             StartCoroutine(WaitThenStartRound());
+    }
+
+    void SpawnAiBot(string role)
+    {
+        GameObject botGo = null;
+        if (role == "wolf")
+        {
+            if (localWolfPrefab != null)
+            {
+                var bot = Instantiate(localWolfPrefab,
+                    wolfSpawnPoints != null && wolfSpawnPoints.Length > 0 ? wolfSpawnPoints[0].position : Vector3.zero,
+                    Quaternion.identity);
+                bot.IsLocal = false;     // not human-controlled
+                bot.localPlayerOverride = false;
+                bot.enabled = false;     // disable input + send loops
+                var fear = bot.GetComponent<WolfFear>();
+                if (fear != null) fear.enabled = false;
+                botGo = bot.gameObject;
+                botGo.name = "AI_Wolf";
+            }
+        }
+        else if (role == "drone")
+        {
+            if (localDronePrefab != null)
+            {
+                var bot = Instantiate(localDronePrefab,
+                    droneSpawnPoint != null ? droneSpawnPoint.position + Vector3.up * 3f : Vector3.up * 5f,
+                    Quaternion.identity);
+                bot.IsLocal = false;
+                bot.enabled = false;
+                var agent = bot.GetComponent<ShepherdDroneAgent>();
+                if (agent != null) agent.enabled = false;
+                var sdc = bot.GetComponent<SimulatedDroneController>();
+                if (sdc != null) sdc.enabled = false;
+                botGo = bot.gameObject;
+                botGo.name = "AI_Drone";
+            }
+        }
+
+        if (botGo == null)
+        {
+            Debug.LogError("[ShepherdGM] AI bot spawn failed — local prefab for " + role + " missing");
+            return;
+        }
+
+        var ai = botGo.AddComponent<SimpleAIBot>();
+        ai.role = role == "wolf" ? SimpleAIBot.Role.Wolf : SimpleAIBot.Role.Drone;
+        if (role == "drone")
+        {
+            // Wire scarer reference for the drone-bot
+            var droneBot = botGo.GetComponent<DronePlayer>();
+            if (droneBot != null) ai.scarer = droneBot.scarer;
+        }
     }
 
     IEnumerator WaitThenStartRound()
