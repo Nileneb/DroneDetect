@@ -63,9 +63,25 @@ public class DronePlayer : MonoBehaviour
 
         if (!_remoteDrones.TryGetValue(d.id, out var t))
         {
-            var go = _gm != null
-                ? Instantiate(_gm.remoteDronePrefab)
-                : new GameObject($"RemoteDrone_{d.id}");
+            GameObject go;
+            if (_gm != null && _gm.remoteDronePrefab != null)
+                go = Instantiate(_gm.remoteDronePrefab);
+            else if (_gm != null && _gm.localDronePrefab != null)
+                go = Instantiate(_gm.localDronePrefab.gameObject);
+            else
+                go = new GameObject($"RemoteDrone_{d.id}");
+
+            go.name = $"RemoteDrone_{d.id}";
+            // Strip controller scripts so remote drone is a pure visual ghost
+            var remoteDp = go.GetComponent<DronePlayer>();
+            if (remoteDp != null) { remoteDp.IsLocal = false; remoteDp.enabled = false; }
+            var agent = go.GetComponent<ShepherdDroneAgent>();
+            if (agent != null) agent.enabled = false;
+            var sdc = go.GetComponent<SimulatedDroneController>();
+            if (sdc != null) sdc.enabled = false;
+            var rb = go.GetComponent<Rigidbody>();
+            if (rb != null) { rb.isKinematic = true; rb.detectCollisions = false; }
+
             t = go.transform;
             _remoteDrones[d.id] = t;
         }
