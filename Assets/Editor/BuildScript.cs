@@ -11,6 +11,11 @@ public static class BuildScript
     // Linux Standalone — robust path, runs anywhere, used as ZIP-download fallback to WebGL
     const string DeployRootLinux = "Build/Linux/ShepherdArena";
 
+    static readonly string[] DefaultScenes = new[] {
+        "Assets/Scenes/MainMenu.unity",
+        "Assets/Scenes/ShepherdArena.unity",
+    };
+
     [MenuItem("Build/Linux Standalone ShepherdArena (Deploy)")]
     public static void BuildLinuxStandaloneDeploy()
     {
@@ -95,6 +100,96 @@ public static class BuildScript
         PlayerSettings.productName = "ShepherdArena";
         PlayerSettings.companyName = "DroneDetect";
         PlayerSettings.stripEngineCode = true;
+    }
+
+    // ───────────────────────────────────────────────────────────────────────
+    // Cloud entrypoint — called via `-executeMethod BuildScript.CloudBuild`.
+    // game-ci/unity-builder passes `-customBuildPath` + `-buildTarget`.
+    // WHY (issue: cloud-cross-platform): Linux runner produces Windows-IL2CPP
+    //   and macOS-Mono artifacts; one method covers both targets.
+    // ───────────────────────────────────────────────────────────────────────
+    public static void CloudBuild()
+    {
+        var args = System.Environment.GetCommandLineArgs();
+        BuildTarget target = BuildTarget.StandaloneWindows64;
+        string buildPath = "build/ShepherdArena";
+
+        for (int i = 0; i < args.Length; i++)
+        {
+            if (args[i] == "-buildTarget" && i + 1 < args.Length)
+            {
+                if (!System.Enum.TryParse(args[i + 1], true, out target))
+                    target = BuildTarget.StandaloneWindows64;
+            }
+            else if (args[i] == "-customBuildPath" && i + 1 < args.Length)
+            {
+                buildPath = args[i + 1];
+            }
+        }
+
+        ConfigureCommonPlayerSettings();
+
+        // Force Mono for macOS cross-compile (Linux runner cannot IL2CPP→OSX).
+        // Windows stays IL2CPP (Linux runner has windows-il2cpp module).
+        var named = NamedBuildTarget.FromBuildTargetGroup(BuildPipeline.GetBuildTargetGroup(target));
+        if (target == BuildTarget.StandaloneOSX)
+            PlayerSettings.SetScriptingBackend(named, ScriptingImplementation.Mono2x);
+        else if (target == BuildTarget.StandaloneWindows64)
+            PlayerSettings.SetScriptingBackend(named, ScriptingImplementation.IL2CPP);
+
+        Directory.CreateDirectory(Path.GetDirectoryName(buildPath));
+
+        var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+        {
+            scenes = DefaultScenes,
+            locationPathName = buildPath,
+            target = target,
+            options = BuildOptions.None,
+        });
+
+        var s = report.summary;
+        if (s.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
+        {
+            Debug.LogError($"[CloudBuild] FAILED ({target}): {s.totalErrors} errors");
+            EditorApplication.Exit(1);
+            return;
+        }
+        Debug.Log($"[CloudBuild] OK {target} → {buildPath} ({s.totalSize / (1024 * 1024)} MB, {s.totalTime})");
+        EditorApplication.Exit(0);
+    }
+
+    [MenuItem("Build/Windows Standalone ShepherdArena (Local)")]
+    public static void BuildWindowsStandaloneLocal()
+    {
+        ConfigureCommonPlayerSettings();
+        var outputPath = Path.Combine(Application.dataPath, "../Build/Windows/ShepherdArena/ShepherdArena.exe");
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
+
+        var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+        {
+            scenes = DefaultScenes,
+            locationPathName = outputPath,
+            target = BuildTarget.StandaloneWindows64,
+            options = BuildOptions.None,
+        });
+        Debug.Log($"[BuildScript] Windows: {report.summary.result}");
+    }
+
+    [MenuItem("Build/macOS Standalone ShepherdArena (Local)")]
+    public static void BuildMacStandaloneLocal()
+    {
+        ConfigureCommonPlayerSettings();
+        var outputPath = Path.Combine(Application.dataPath, "../Build/macOS/ShepherdArena.app");
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
+
+        var report = BuildPipeline.BuildPlayer(new BuildPlayerOptions
+        {
+            scenes = DefaultScenes,
+            locationPathName = outputPath,
+            target = BuildTarget.StandaloneOSX,
+            options = BuildOptions.None,
+        });
+        Debug.Log($"[BuildScript] macOS: {report.summary.result}");
     }
 
     static void ConfigureWebGLPlayerSettings()

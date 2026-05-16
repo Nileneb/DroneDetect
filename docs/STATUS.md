@@ -59,13 +59,44 @@ User-Laptop (8 GB VGPU, 32 GB RAM → reicht für 1M-Step PPO).
 
 ### Deploy auf u-server (Production)
 ```bash
-# Phase 1 (manuell, jetzt):
-rsync -avz --delete \
-    /home/nileneb/Desktop/WebDev/app.linn.games/public/shepherd/ \
-    nileneb@192.168.178.12:/var/www/app.linn.games/public/shepherd/
+# Lokaler Linux-Build → ZIP + rsync zur Production
+./tools/zip-and-deploy-linux.sh --prod
 
-# Phase 3 (Swarm, später): Build-Container schreibt direkt ins NFS-Volume
-# das auf u-server gemounted ist — kein rsync mehr nötig.
+# Windows + macOS: automatisch via GitHub Actions (siehe Build-Matrix unten)
+gh workflow run cloud-build.yml          # manuell triggern
+gh run watch                              # zuschauen
+```
+
+### Build-Matrix (Cross-Platform)
+
+| Target | Wo | Wie | Output |
+|--------|-----|-----|--------|
+| Linux x64 | lokal BigOne | Unity-Menü `Build > Linux Standalone (Deploy)` → `tools/zip-and-deploy-linux.sh --prod` | `shepherd-linux-x64.zip` |
+| Windows x64 (IL2CPP) | GitHub Actions (Ubuntu) | push auf `main` oder `gh workflow run cloud-build.yml` | `shepherd-windows-x64.zip` |
+| macOS universal (Mono) | GitHub Actions (Ubuntu) | push auf `main` oder `gh workflow run cloud-build.yml` | `shepherd-macos-universal.zip` |
+
+Alle drei landen in `app.linn.games/shepherd/downloads/` — Linux per `--prod` rsync,
+Cloud-Builds via SSH-Deploy-Step im Workflow. Voraussetzung: secrets gesetzt
+(siehe `.github/workflows/cloud-build.yml` Kommentar am Dateiende).
+
+**Einmal-Setup für Cloud-Builds:**
+```bash
+# Unity-License (.alf → .ulf via license.unity3d.com/manual)
+/home/nileneb/Unity/Hub/Editor/6000.4.7f1/Editor/Unity \
+  -batchmode -nographics -quit -createManualActivationFile
+# Datei hochladen → ULF zurück → als Secret setzen
+gh secret set UNITY_LICENSE < Unity_v6000.4.7f1.ulf
+gh secret set UNITY_EMAIL --body 'benedikt.linn@code.berlin'
+gh secret set UNITY_PASSWORD --body '<dein-passwort>'
+
+# SSH-Deploy-Key (separates Keypair nur für GH-Actions → u-server)
+ssh-keygen -t ed25519 -f /tmp/deploy_key -N ''
+ssh-copy-id -i /tmp/deploy_key.pub nileneb@192.168.178.12
+gh secret set DEPLOY_SSH_KEY < /tmp/deploy_key
+gh secret set DEPLOY_HOST --body '192.168.178.12'
+gh secret set DEPLOY_USER --body 'nileneb'
+gh secret set DEPLOY_PATH --body '/var/www/app.linn.games/public/shepherd/downloads'
+rm /tmp/deploy_key /tmp/deploy_key.pub
 ```
 
 ### Präsentation öffnen
