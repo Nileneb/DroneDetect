@@ -37,11 +37,25 @@ public class DronePlayer : MonoBehaviour
     {
         if (!IsLocal) return;
 
-        // Takeoff / Land only — movement is handled by ShepherdDroneAgent
+        // Takeoff / Land
         if (_sdc.State == DroneState.Landed && Input.GetKeyDown(KeyCode.T))
             _sdc.Takeoff();
         else if ((_sdc.State == DroneState.Hovering || _sdc.State == DroneState.Flying) && Input.GetKeyDown(KeyCode.G))
             _sdc.Land();
+
+        // WHY: direct input → controller. The ML-Agents Heuristic() pipeline only fires when
+        // RequestDecision is called, and the prefab has no DecisionRequester. For human play
+        // we bypass ML-Agents entirely and drive SimulatedDroneController.Move() ourselves.
+        if (_sdc.State == DroneState.Hovering || _sdc.State == DroneState.Flying)
+        {
+            float fwd    = Input.GetAxis("Vertical");
+            float strafe = Input.GetAxis("Horizontal");
+            float vert   = Input.GetKey(KeyCode.Space) ? 1f
+                          : Input.GetKey(KeyCode.LeftShift) ? -1f : 0f;
+            float yaw    = Input.GetKey(KeyCode.Q) ? -1f
+                          : Input.GetKey(KeyCode.E) ?  1f : 0f;
+            _sdc.Move(fwd, -strafe, vert, yaw);
+        }
 
         SendPositionThrottled();
     }

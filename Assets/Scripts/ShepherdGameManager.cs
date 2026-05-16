@@ -435,12 +435,13 @@ public class ShepherdGameManager : MonoBehaviour
         }
     }
 
-    // WHY: scene-sheep are parented under a "Sheep" group GameObject (parent at origin) AND
-    // carry stale NavMeshAgent + Animator-with-rootMotion. The parent transform plus root-motion
-    // override our transform.position writes — sheep visually snap toward the parent (0,0,0).
-    // Fix: unparent (so transform.position writes are absolute world-space), destroy NavMeshAgent,
-    // disable Animator-rootMotion, freeze Rigidbody to non-kinematic-but-no-gravity, re-spread
-    // clumped positions onto a ring.
+    // WHY: scene-sheep carry CreatureMover + MovePlayerInput (ithappy/Animals_FREE asset
+    // pack). CreatureMover.Move() reads `target` (camera-look) and steers the sheep toward
+    // it via CharacterController — when the human player isn't driving, target defaults to
+    // origin and ALL sheep migrate to (0,0,0). Plus NavMeshAgent + Animator-rootMotion fight
+    // us too. Fix: disable every non-SheepNPC mover script + CharacterController + NavMeshAgent
+    // on each sheep, kill Animator root-motion, then spread the sheep onto a ring so they
+    // start wandering randomly.
     void RepairSheep()
     {
         var all = FindObjectsByType<SheepNPC>(FindObjectsSortMode.None);
@@ -449,21 +450,35 @@ public class ShepherdGameManager : MonoBehaviour
             var s = all[i];
             if (s == null) continue;
 
-            // Detach from any parent — transform.position writes are world-space but a parent
-            // with Animator/Constraint/Script can still override per-frame.
+            // Detach from any parent group ("Sheep") so world-space writes are unambiguous
             if (s.transform.parent != null)
                 s.transform.SetParent(null, true);
 
+            // Disable every external mover script — only SheepNPC should drive the transform
+            foreach (var comp in s.GetComponents<MonoBehaviour>())
+            {
+                if (comp == s) continue;
+                var n = comp.GetType().Name;
+                if (n == "CreatureMover" || n == "MovePlayerInput" || n == "PlayerInput"
+                    || n == "AnimalAi" || n == "AnimalController")
+                {
+                    comp.enabled = false;
+                }
+            }
+
+            // CharacterController fights direct transform.position writes — disable it.
+            var cc = s.GetComponent<CharacterController>();
+            if (cc != null) cc.enabled = false;
+
+            // NavMeshAgent: hard-remove (scene has no baked NavMesh anyway → log spam)
             var nav = s.GetComponent<UnityEngine.AI.NavMeshAgent>();
             if (nav != null) Destroy(nav);
 
-            // Kill root-motion so the Animator doesn't yank position back
+            // Animator root-motion would override transform.position
             foreach (var anim in s.GetComponentsInChildren<Animator>(true))
-            {
                 anim.applyRootMotion = false;
-            }
 
-            // Rigidbody: lock to ground plane, no rotation jitter, no gravity-pull-to-zero
+            // Rigidbody: no gravity (so they don't fall through ground), freeze Y + rotation
             var rb = s.GetComponent<Rigidbody>();
             if (rb != null)
             {
@@ -475,14 +490,13 @@ public class ShepherdGameManager : MonoBehaviour
 
             s.enabled = true;
 
-            // Spread sheep onto a ring so they aren't bunched at parent's origin
+            // Spread onto an even ring — index i / total → angle, plus jitter
             var ang = (Mathf.PI * 2f) * (i / (float)Mathf.Max(1, all.Length)) + UnityEngine.Random.Range(0f, 0.6f);
             var r   = UnityEngine.Random.Range(10f, 18f);
             var pos = s.transform.position;
-            // Always reseed — the parent-snap already moved them home
             s.transform.position = new Vector3(Mathf.Cos(ang) * r, pos.y, Mathf.Sin(ang) * r);
         }
-        Debug.Log($"[ShepherdGM] RepairSheep: detached + spread {all.Length} sheep");
+        Debug.Log($"[ShepherdGM] RepairSheep: stripped movers + spread {all.Length} sheep");
     }
 
     void SpawnLocalWolf()
@@ -506,9 +520,12 @@ public class ShepherdGameManager : MonoBehaviour
 
         // WHY: prefab is configured with BehaviorType.Default + a trained DroneShepherd .onnx
         // model. Default means "use the model if present" → the trained agent flies, not the
-        // human. Force HeuristicOnly on the LOCAL drone so Heuristic() reads keyboard input.
+        // human. Force HeuristicOnly + disable ShepherdDroneAgent so only DronePlayer.Update
+        // drives the SimulatedDroneController (direct input). No fight over the controller.
         var bp = drone.GetComponent<BehaviorParameters>();
         if (bp != null) bp.BehaviorType = BehaviorType.HeuristicOnly;
+        var localAgent = drone.GetComponent<ShepherdDroneAgent>();
+        if (localAgent != null) localAgent.enabled = false;
     }
 
     IEnumerator PostJson(string url, string json)
