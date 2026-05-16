@@ -130,10 +130,14 @@ public class ShepherdGameManager : MonoBehaviour
         }
 
         Debug.Log($"[ShepherdGM] RevbClient.Instance={(RevbClient.Instance != null ? "OK" : "NULL")}");
-        if (RevbClient.Instance != null)
+        if (RevbClient.Instance != null && !IsOfflineMode())
         {
             RevbClient.Instance.OnEvent += HandleEvent;
             RevbClient.Instance.Connect(_sessionCode, _jwt);
+        }
+        else if (IsOfflineMode())
+        {
+            Debug.Log("[ShepherdGM] Offline mode — skipping Pusher Connect");
         }
         else
         {
@@ -267,7 +271,7 @@ public class ShepherdGameManager : MonoBehaviour
         OnSheepCaughtEvent?.Invoke(s);
 
         // Real-time broadcast so the drone-player sees the catch immediately (host-authoritative)
-        if (RevbClient.Instance != null && IsHost)
+        if (RevbClient.Instance != null && IsHost && !IsOfflineMode())
         {
             var json = $"{{\"sheep_id\":{s.SheepId},\"caught\":{_sheepCaught},\"remaining\":{ActiveSheep.Count}}}";
             RevbClient.Instance.Send("sheep.caught", json);
