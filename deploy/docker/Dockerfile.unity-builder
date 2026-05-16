@@ -1,0 +1,22 @@
+# Unity 6000.6.0a3 + WebGL Build Support in einem reproducible Container.
+# Build once, then deploy as Swarm service `shepherd_unity-builder`.
+#
+# Build:
+#   docker build -f deploy/docker/Dockerfile.unity-builder \
+#       -t dronedetect/unity-builder:6000.6.0a3 \
+#       --build-arg UNITY_VERSION=6000.6.0a3 .
+FROM unityci/editor:ubuntu-6000.6.0a3-webgl-3.1.0
+
+ARG BUILD_USER=unitybuilder
+ARG UID=1000
+
+# Non-root user for Unity (license headaches if root)
+RUN useradd -m -u ${UID} -s /bin/bash ${BUILD_USER}
+USER ${BUILD_USER}
+WORKDIR /home/${BUILD_USER}
+
+# Build entrypoint — expects /project mounted ro, /output mounted rw
+COPY --chown=${BUILD_USER}:${BUILD_USER} build-entrypoint.sh /home/${BUILD_USER}/build-entrypoint.sh
+RUN chmod +x /home/${BUILD_USER}/build-entrypoint.sh
+
+ENTRYPOINT ["/home/unitybuilder/build-entrypoint.sh"]

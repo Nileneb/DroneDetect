@@ -282,6 +282,11 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
             Vector3 dampForce = -hVel * hoverDamping * _rb.mass;
             _rb.AddForce(dampForce, ForceMode.Force);
         }
+
+        // ── 9. Wind disturbance ──
+        var wc = WindController.Instance;
+        if (wc != null)
+            _rb.AddForce(wc.CurrentWindForce, ForceMode.Force);
     }
 
     void UpdateLanding(float dt)

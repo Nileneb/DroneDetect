@@ -26,7 +26,14 @@ behaviors:
         use_actions: true
         use_vail: false
     keep_checkpoints: 5
-    max_steps: 500000
-    time_horizon: 64
+    max_steps: 1500000
+    time_horizon: 128
     summary_freq: 5000
-    checkpoint_interval: 50000
+    checkpoint_interval: 100000
+    # Initial model: Curriculum-Phase-4 startet mit DroneCSI als Pretraining-Basis.
+    # init_path: results/v8_1/DroneCSI.onnx → ML-Agents resume/initial-load via CLI flag.
+
+environment_parameters:
+  wind_strength: 0.4
+  # Episode-Länge in Sekunden — wird im ShepherdGameManager.roundDuration verbraucht.
+  shepherd_round_duration: 300.0

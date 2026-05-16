@@ -1,58 +1,47 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+// Handles networking + takeoff/land only.
+// Movement + scarer are driven by ShepherdDroneAgent (heuristic or AI).
+[RequireComponent(typeof(SimulatedDroneController))]
+[RequireComponent(typeof(ShepherdDroneAgent))]
 public class DronePlayer : MonoBehaviour
 {
-    [Header("Movement")]
-    public float horizontalSpeed = 6f;
-    public float verticalSpeed = 4f;
-    public float rotSpeed = 90f;
-
     [Header("Components")]
     public DroneScarer scarer;
 
     public int PlayerId { get; set; }
     public bool IsLocal { get; set; }
 
-    Rigidbody _rb;
+    SimulatedDroneController _sdc;
     readonly Dictionary<int, Transform> _remoteDrones = new();
     ShepherdGameManager _gm;
 
     void Awake()
     {
-        _rb = GetComponent<Rigidbody>();
-        if (_rb) _rb.useGravity = false;
+        _sdc = GetComponent<SimulatedDroneController>();
     }
 
     void Start()
     {
         _gm = FindFirstObjectByType<ShepherdGameManager>();
-        if (IsLocal && RevbClient.Instance != null)
-            RevbClient.Instance.OnEvent += HandleNetEvent;
+        if (IsLocal)
+        {
+            _sdc.Takeoff();
+            if (RevbClient.Instance != null)
+                RevbClient.Instance.OnEvent += HandleNetEvent;
+        }
     }
 
     void Update()
     {
         if (!IsLocal) return;
 
-        float h = Input.GetAxis("Horizontal");
-        float v = Input.GetAxis("Vertical");
-        float up = Input.GetKey(KeyCode.E) ? 1f : Input.GetKey(KeyCode.Q) ? -1f : 0f;
-        float rot = 0f;
-
-        if (_rb)
-        {
-            var move = (transform.forward * v + transform.right * h) * horizontalSpeed
-                       + Vector3.up * up * verticalSpeed;
-            _rb.linearVelocity = Vector3.Lerp(_rb.linearVelocity, move, 0.2f);
-            transform.Rotate(Vector3.up, rot * rotSpeed * Time.deltaTime);
-        }
-
-        if (Input.GetKeyDown(KeyCode.F) && scarer != null)
-        {
-            scarer.Activate();
-            _gm?.RecordEvent("scarer_activated");
-        }
+        // Takeoff / Land only — movement is handled by ShepherdDroneAgent
+        if (_sdc.State == DroneState.Landed && Input.GetKeyDown(KeyCode.T))
+            _sdc.Takeoff();
+        else if ((_sdc.State == DroneState.Hovering || _sdc.State == DroneState.Flying) && Input.GetKeyDown(KeyCode.G))
+            _sdc.Land();
 
         SendPositionThrottled();
     }

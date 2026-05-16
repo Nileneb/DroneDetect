@@ -26,8 +26,16 @@ public class ShepherdGameManager : MonoBehaviour
     public Text endResultText;
 
     [Header("Game Settings")]
-    public float roundDuration = 180f;
+    public float roundDuration = 300f;
     public string apiBase = "https://app.linn.games/api/shepherd";
+
+    [Header("Phase-4 Reward Tuning")]
+    [Tooltip("Bonus pro überlebendes Schaf am Episodenende.")]
+    public float sheepSavedBonus = 5f;
+    [Tooltip("Reward-Multiplikator wenn alle Schafe überleben (perfect-defense).")]
+    public float perfectDefenseMultiplier = 1.5f;
+    [Tooltip("Strafe pro getötetem Schaf (sofort, beim Catch).")]
+    public float sheepCaughtPenalty = 3f;
 
 #if UNITY_EDITOR
     [Header("Editor Only")]
@@ -37,6 +45,13 @@ public class ShepherdGameManager : MonoBehaviour
     public List<Transform> ActiveSheep { get; } = new();
     public float ElapsedTime => _elapsed;
     public int SheepCaught => _sheepCaught;
+    public int SheepSaved => _sheepSaved;
+    public int InitialSheepCount { get; private set; }
+    public float RoundDuration => roundDuration;
+    public bool IsRoundActive => _running;
+
+    public System.Action<int, int, float> OnRoundEnded;
+    public System.Action<SheepNPC> OnSheepCaughtEvent;
 
     string _sessionCode;
     string _jwt;
@@ -63,6 +78,7 @@ public class ShepherdGameManager : MonoBehaviour
     void Start()
     {
         foreach (var s in sheep) ActiveSheep.Add(s.transform);
+        InitialSheepCount = sheep != null ? sheep.Length : 0;
 
         // Read token + session from URL params via JS interop
         _sessionCode = GetUrlParam("session");
@@ -118,10 +134,10 @@ public class ShepherdGameManager : MonoBehaviour
         _running = true;
         StartCoroutine(RoundTimer());
         StartCoroutine(BatchUpload());
+#if !UNITY_EDITOR
         if (RevbClient.Instance != null && IsHost)
-        {
             StartCoroutine(PostJson($"{apiBase}/sessions/{_sessionCode}/start", "{}"));
-        }
+#endif
     }
 
     IEnumerator RoundTimer()
@@ -159,6 +175,7 @@ public class ShepherdGameManager : MonoBehaviour
         _sheepCaught++;
 
         RecordEvent("catch_sheep");
+        OnSheepCaughtEvent?.Invoke(s);
 
         if (ActiveSheep.Count == 0) EndRound();
     }
@@ -190,6 +207,10 @@ public class ShepherdGameManager : MonoBehaviour
         while (_running)
         {
             yield return new WaitForSeconds(2f);
+#if UNITY_EDITOR
+            _pendingEvents.Clear();
+            continue;
+#endif
             if (_pendingEvents.Count == 0) continue;
 
             var batch = new List<EventBatch>(_pendingEvents);
@@ -213,12 +234,14 @@ public class ShepherdGameManager : MonoBehaviour
 
         FindFirstObjectByType<ShepherdHUD>()?.ShowEndScreen(_sheepSaved, _sheepCaught, _elapsed);
 
+        OnRoundEnded?.Invoke(_sheepSaved, _sheepCaught, _elapsed);
+
         StartCoroutine(PostEnd());
     }
 
     IEnumerator PostEnd()
     {
-        // Flush remaining events
+#if !UNITY_EDITOR
         if (_pendingEvents.Count > 0)
         {
             var wrapper = new EventBatchWrapper { events = new List<EventBatch>(_pendingEvents) };
@@ -228,6 +251,10 @@ public class ShepherdGameManager : MonoBehaviour
 
         var endJson = $"{{\"sheep_saved\":{_sheepSaved},\"sheep_caught\":{_sheepCaught},\"duration_seconds\":{(int)_elapsed}}}";
         yield return PostJson($"{apiBase}/sessions/{_sessionCode}/end", endJson);
+#else
+        _pendingEvents.Clear();
+        yield break;
+#endif
     }
 
     void HandleEvent(string eventName, string json)
