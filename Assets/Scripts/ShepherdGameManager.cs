@@ -168,8 +168,36 @@ public class ShepherdGameManager : MonoBehaviour
         // its default destination (0,0,0). Hard-destroy it + reseed positions if collapsed.
         RepairSheep();
 
+        WireDemoUploader();
+
         if (IsHost)
             StartCoroutine(WaitThenStartRound());
+    }
+
+    // WHY: DemoUploader exists but was never subscribed to OnRoundEnded → demos were never
+    // uploaded. Wire it now: at round-end, if JWT is configured (env/file), POST the latest
+    // .demo file. Status messages bubble into DroneHUD so the player sees upload progress.
+    void WireDemoUploader()
+    {
+        var uploader = GetComponent<DemoUploader>() ?? gameObject.AddComponent<DemoUploader>();
+        uploader.agentType = "DroneShepherd";
+        uploader.role      = string.IsNullOrEmpty(_localRole) ? "drone" : _localRole;
+        uploader.OnStatusChanged += msg =>
+        {
+            var hud = FindFirstObjectByType<DroneHUD>();
+            if (hud != null) hud.ShowMessage(msg, 5f);
+        };
+        OnRoundEnded += (saved, caught, duration) =>
+        {
+            if (IsOfflineMode())
+            {
+                Debug.Log("[ShepherdGM] Demo-Upload skipped — offline mode (no JWT)");
+                var hud = FindFirstObjectByType<DroneHUD>();
+                if (hud != null) hud.ShowMessage("Offline-Modus — kein Upload", 5f);
+                return;
+            }
+            uploader.UploadLatestDemo(saved, caught, duration, _sessionCode);
+        };
     }
 
     void SpawnAiBot(string role)
@@ -526,6 +554,25 @@ public class ShepherdGameManager : MonoBehaviour
         if (bp != null) bp.BehaviorType = BehaviorType.HeuristicOnly;
         var localAgent = drone.GetComponent<ShepherdDroneAgent>();
         if (localAgent != null) localAgent.enabled = false;
+
+        // WHY: prefab has 4 cameras (Main 60° cockpit, DroneCamera 70° 3rd-person, GroundCam
+        // + DepthCam ML sensors). For human play we want ONLY the prefab's Main Camera (= the
+        // Agent1 look). Disable the ML sensor cams (they render to RenderTexture but waste
+        // GPU) and the secondary DroneCamera so the Main Camera is unambiguous.
+        foreach (var cam in drone.GetComponentsInChildren<Camera>(true))
+        {
+            bool isMainView = cam.CompareTag("MainCamera") && cam.targetTexture == null;
+            cam.enabled = isMainView;
+        }
+        foreach (var listener in drone.GetComponentsInChildren<AudioListener>(true))
+            listener.enabled = (listener.gameObject.name == "Main Camera");
+
+        // WHY: Agent1 has a full programmatic HUD (crosshair + state-panel + fire-button +
+        // message-line). ShepherdArena was missing it. Build it now for the local drone.
+        WolfPlayer aiWolfRef = null;
+        foreach (var w in FindObjectsByType<WolfPlayer>(FindObjectsSortMode.None))
+            if (w.gameObject.name == "AI_Wolf") { aiWolfRef = w; break; }
+        DroneHUD.CreateShepherdHUD(drone, aiWolfRef);
     }
 
     IEnumerator PostJson(string url, string json)

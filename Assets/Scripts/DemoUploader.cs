@@ -39,7 +39,15 @@ public class DemoUploader : MonoBehaviour
 
     DemonstrationRecorder _recorder;
 
-    void Awake() => _recorder = GetComponent<DemonstrationRecorder>();
+    /// <summary>Status updates for UI hooks: "Uploading…", "Demo uploaded ✓", "Upload failed: …".</summary>
+    public event System.Action<string> OnStatusChanged;
+
+    void Awake()
+    {
+        // Recorder may live on a child object (drone prefab) or on the same GO
+        _recorder = GetComponent<DemonstrationRecorder>()
+                    ?? FindObjectOfType<DemonstrationRecorder>();
+    }
 
     /// <summary>
     /// Called by ShepherdGameManager.OnRoundEnded.
@@ -105,8 +113,10 @@ public class DemoUploader : MonoBehaviour
         if (string.IsNullOrEmpty(token))
         {
             Debug.LogWarning("[DemoUploader] No JWT available — skipping upload");
+            OnStatusChanged?.Invoke("Demo-Upload übersprungen (kein JWT)");
             yield break;
         }
+        OnStatusChanged?.Invoke("Demo wird hochgeladen…");
 
         byte[] demoBytes;
         try { demoBytes = File.ReadAllBytes(demoPath); }
@@ -127,8 +137,14 @@ public class DemoUploader : MonoBehaviour
         yield return req.SendWebRequest();
 
         if (req.result == UnityWebRequest.Result.Success)
+        {
             Debug.Log($"[DemoUploader] OK ({demoBytes.Length / 1024} KB): {req.downloadHandler.text}");
+            OnStatusChanged?.Invoke($"Demo hochgeladen ✓ ({demoBytes.Length / 1024} KB)");
+        }
         else
+        {
             Debug.LogWarning($"[DemoUploader] Upload failed ({req.responseCode}): {req.error} — {req.downloadHandler.text}");
+            OnStatusChanged?.Invoke($"Upload fehlgeschlagen ({req.responseCode})");
+        }
     }
 }

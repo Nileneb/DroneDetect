@@ -15,7 +15,13 @@ using UnityEngine.UI;
 public class DroneHUD : MonoBehaviour
 {
     // ═══ Referenzen ═══
-    DroneAgent _agent;
+    DroneAgent _agent;          // Agent1 mode
+    DronePlayer _drone;         // Shepherd mode
+    SimulatedDroneController _sdc;  // Shepherd mode — state/alt/speed/battery source
+    DroneScarer _scarer;        // Shepherd mode — fire button cooldown
+    WolfPlayer _aiWolf;         // Shepherd mode — fear bar source
+    WolfFear _aiWolfFear;       // Shepherd mode
+    bool _shepherdMode;
     Canvas _canvas;
 
     // UI Elemente
@@ -30,7 +36,10 @@ public class DroneHUD : MonoBehaviour
     Image _crosshairV;
     Image _crosshairDot;
     Image _fireIndicator;
+    Image _fireCooldownMask;    // Shepherd mode — fill drops as cooldown elapses
     Text _fireText;
+    Image _fearBarFill;         // Shepherd mode — wolf fear 0..1
+    Text _fearLabel;            // Shepherd mode — "Wolfsfurcht: 42%" or "PANIK!"
 
     // Message Timer
     float _messageTimer;
@@ -73,6 +82,146 @@ public class DroneHUD : MonoBehaviour
         DontDestroyOnLoad(canvasGO);
         Debug.Log("[DroneHUD] HUD erstellt.");
         return hud;
+    }
+
+    /// <summary>
+    /// Shepherd-Mode HUD: same layout as Agent1 but driven by DronePlayer/Scarer/AI-Wolf
+    /// instead of DroneAgent (no Mission-Panel, FireButton mirrors DroneScarer cooldown,
+    /// optional Wolf-Fear-Bar oben-rechts).
+    /// </summary>
+    public static DroneHUD CreateShepherdHUD(DronePlayer drone, WolfPlayer aiWolf = null)
+    {
+        DroneHUD existing = FindObjectOfType<DroneHUD>();
+        if (existing != null)
+        {
+            existing._drone = drone;
+            existing._sdc = drone != null ? drone.GetComponent<SimulatedDroneController>() : null;
+            existing._scarer = drone != null ? drone.scarer : null;
+            existing._aiWolf = aiWolf;
+            existing._aiWolfFear = aiWolf != null ? aiWolf.GetComponent<WolfFear>() : null;
+            existing._shepherdMode = true;
+            return existing;
+        }
+
+        GameObject canvasGO = new GameObject("DroneShepherdHUD_Canvas");
+        Canvas canvas = canvasGO.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 100;
+
+        CanvasScaler scaler = canvasGO.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        scaler.matchWidthOrHeight = 0.5f;
+
+        canvasGO.AddComponent<GraphicRaycaster>();
+
+        DroneHUD hud = canvasGO.AddComponent<DroneHUD>();
+        hud._drone = drone;
+        hud._sdc = drone != null ? drone.GetComponent<SimulatedDroneController>() : null;
+        hud._scarer = drone != null ? drone.scarer : null;
+        hud._aiWolf = aiWolf;
+        hud._aiWolfFear = aiWolf != null ? aiWolf.GetComponent<WolfFear>() : null;
+        hud._canvas = canvas;
+        hud._shepherdMode = true;
+        hud.BuildShepherdUI(canvasGO.transform);
+
+        DontDestroyOnLoad(canvasGO);
+        Debug.Log($"[DroneHUD] Shepherd-HUD erstellt (aiWolf={(aiWolf != null ? "yes" : "no")}).");
+        return hud;
+    }
+
+    void BuildShepherdUI(Transform parent)
+    {
+        BuildCrosshair(parent);
+        BuildStatusPanel(parent);
+        if (_aiWolf != null) BuildFearPanel(parent);
+        BuildFireButtonWithCooldown(parent);
+        BuildMessageLine(parent);
+    }
+
+    // Fire-Button mit Scarer-Cooldown-Maske: roter Button mit dunklerem Overlay das von oben
+    // nach unten "leerläuft" während Cooldown
+    void BuildFireButtonWithCooldown(Transform parent)
+    {
+        GameObject btnGO = new GameObject("FireButton");
+        btnGO.transform.SetParent(parent, false);
+
+        _fireIndicator = btnGO.AddComponent<Image>();
+        _fireIndicator.color = new Color(0.8f, 0.1f, 0.1f, 0.85f);
+
+        RectTransform rt = btnGO.GetComponent<RectTransform>();
+        rt.anchorMin = rt.anchorMax = new Vector2(1, 0);
+        rt.pivot = new Vector2(1, 0);
+        rt.anchoredPosition = new Vector2(-20, 20);
+        rt.sizeDelta = new Vector2(140, 70);
+
+        // Cooldown mask: dark overlay, fillAmount drops from 1 to 0 as scarer recovers
+        GameObject mask = new GameObject("CooldownMask");
+        mask.transform.SetParent(btnGO.transform, false);
+        _fireCooldownMask = mask.AddComponent<Image>();
+        _fireCooldownMask.color = new Color(0, 0, 0, 0.6f);
+        _fireCooldownMask.type = Image.Type.Filled;
+        _fireCooldownMask.fillMethod = Image.FillMethod.Vertical;
+        _fireCooldownMask.fillOrigin = (int)Image.OriginVertical.Top;
+        _fireCooldownMask.fillAmount = 0f;
+        _fireCooldownMask.raycastTarget = false;
+        RectTransform mrt = mask.GetComponent<RectTransform>();
+        mrt.anchorMin = Vector2.zero;
+        mrt.anchorMax = Vector2.one;
+        mrt.offsetMin = Vector2.zero;
+        mrt.offsetMax = Vector2.zero;
+
+        _fireText = CreateText(btnGO.transform, "FireLabel", 22, TextAnchor.MiddleCenter,
+            Vector2.zero, "🔆 SCARER [F]");
+        _fireText.color = Color.white;
+        RectTransform ftrt = _fireText.rectTransform;
+        ftrt.anchorMin = Vector2.zero;
+        ftrt.anchorMax = Vector2.one;
+        ftrt.offsetMin = Vector2.zero;
+        ftrt.offsetMax = Vector2.zero;
+    }
+
+    // Wolf-Fear-Bar oben-rechts (statt Mission-Panel)
+    void BuildFearPanel(Transform parent)
+    {
+        GameObject panel = CreatePanel(parent, "FearPanel",
+            new Vector2(1, 1), new Vector2(1, 1),
+            new Vector2(-10, -10),
+            new Vector2(280, 90));
+        // anchor pivot top-right
+        var prt = panel.GetComponent<RectTransform>();
+        prt.pivot = new Vector2(1, 1);
+
+        _fearLabel = CreateText(panel.transform, "FearLabel", 16, TextAnchor.UpperLeft,
+            new Vector2(10, -8), "Wolfsfurcht: 0%");
+
+        // Bar background
+        GameObject bg = new GameObject("FearBarBG");
+        bg.transform.SetParent(panel.transform, false);
+        var bgImg = bg.AddComponent<Image>();
+        bgImg.color = new Color(0.2f, 0.2f, 0.2f, 0.8f);
+        bgImg.raycastTarget = false;
+        var bgrt = bg.GetComponent<RectTransform>();
+        bgrt.anchorMin = new Vector2(0, 0);
+        bgrt.anchorMax = new Vector2(0, 0);
+        bgrt.pivot = new Vector2(0, 0);
+        bgrt.anchoredPosition = new Vector2(10, 12);
+        bgrt.sizeDelta = new Vector2(260, 24);
+
+        // Bar fill
+        GameObject fill = new GameObject("FearBarFill");
+        fill.transform.SetParent(bg.transform, false);
+        _fearBarFill = fill.AddComponent<Image>();
+        _fearBarFill.color = new Color(1f, 0.85f, 0.2f, 1f);
+        _fearBarFill.type = Image.Type.Filled;
+        _fearBarFill.fillMethod = Image.FillMethod.Horizontal;
+        _fearBarFill.fillAmount = 0f;
+        _fearBarFill.raycastTarget = false;
+        var frt = fill.GetComponent<RectTransform>();
+        frt.anchorMin = Vector2.zero;
+        frt.anchorMax = Vector2.one;
+        frt.offsetMin = Vector2.zero;
+        frt.offsetMax = Vector2.zero;
     }
 
     // ═══ UI aufbauen ═══
@@ -209,6 +358,7 @@ public class DroneHUD : MonoBehaviour
 
     void Update()
     {
+        if (_shepherdMode) { UpdateShepherd(); return; }
         if (_agent == null) return;
 
         // Status
@@ -260,11 +410,97 @@ public class DroneHUD : MonoBehaviour
         }
     }
 
+    // ═══ Shepherd-Mode Update ═══
+
+    void UpdateShepherd()
+    {
+        if (_sdc != null)
+        {
+            string stateStr = _sdc.State.ToString().ToUpper();
+            Color stateColor = GetStateColor(_sdc.State);
+            if (_stateText != null) { _stateText.text = $"STATE: {stateStr}"; _stateText.color = stateColor; }
+
+            var nd = _sdc.Navdata;
+            if (_altitudeText != null) _altitudeText.text = $"ALT: {nd.altitude:F1}m";
+
+            float speed = Mathf.Sqrt(nd.vx * nd.vx + nd.vy * nd.vy + nd.vz * nd.vz);
+            if (_speedText != null) _speedText.text = $"SPD: {speed:F1} m/s";
+
+            float bat = nd.battery;
+            if (_batteryText != null)
+            {
+                _batteryText.text = $"BAT: {bat:F0}%";
+                _batteryText.color = bat < 20f ? Color.red : (bat < 50f ? Color.yellow : Color.green);
+            }
+        }
+
+        // Scarer: F-key triggers + cooldown mask animates
+        if (_scarer != null)
+        {
+            if (Input.GetKeyDown(KeyCode.F) && _scarer.IsReady)
+            {
+                _scarer.Activate();
+                ShowMessage("🔆 Scarer aktiviert!", 1.5f);
+            }
+
+            if (_fireIndicator != null)
+            {
+                if (_scarer.IsActive)
+                {
+                    _fireIndicator.color = new Color(1f, 0.5f, 0f, 0.95f);
+                    _fireText.text = ">>> AKTIV <<<";
+                }
+                else if (!_scarer.IsReady)
+                {
+                    _fireIndicator.color = new Color(0.4f, 0.4f, 0.4f, 0.85f);
+                    _fireText.text = "Cooldown…";
+                }
+                else
+                {
+                    _fireIndicator.color = new Color(0.8f, 0.1f, 0.1f, 0.85f);
+                    _fireText.text = "🔆 SCARER [F]";
+                }
+            }
+            if (_fireCooldownMask != null)
+                _fireCooldownMask.fillAmount = _scarer.CooldownFraction;
+        }
+
+        // Wolf-Fear-Bar
+        if (_aiWolfFear != null)
+        {
+            float f = _aiWolfFear.Fear;
+            if (_fearBarFill != null)
+            {
+                _fearBarFill.fillAmount = f;
+                _fearBarFill.color = _aiWolfFear.IsPanicking
+                    ? new Color(1f, 0.15f, 0.1f, 1f)
+                    : Color.Lerp(new Color(1f, 0.85f, 0.2f, 1f), new Color(1f, 0.3f, 0.1f, 1f), f);
+            }
+            if (_fearLabel != null)
+                _fearLabel.text = _aiWolfFear.IsPanicking ? "🐺 PANIK!" : $"Wolfsfurcht: {(f * 100):F0}%";
+        }
+
+        // Crosshair: green normal, orange when scarer active
+        Color chColor = (_scarer != null && _scarer.IsActive)
+            ? new Color(1f, 0.5f, 0f, 0.9f)
+            : new Color(0f, 1f, 0.4f, 0.8f);
+        if (_crosshairH != null) _crosshairH.color = chColor;
+        if (_crosshairV != null) _crosshairV.color = chColor;
+        if (_crosshairDot != null) _crosshairDot.color = chColor;
+
+        // Message timer
+        if (_messageTimer > 0)
+        {
+            _messageTimer -= Time.deltaTime;
+            if (_messageTimer <= 0 && _messageText != null) _messageText.text = "";
+        }
+    }
+
     // ═══ Public API ═══
 
     public void ShowMessage(string msg, float duration = 2f)
     {
-        _messageText.text = msg;
+        if (_messageText != null) _messageText.text = msg;
         _messageTimer = duration;
     }
 
