@@ -1,111 +1,109 @@
 using UnityEngine;
-using UnityEngine.AI;
 
-[RequireComponent(typeof(NavMeshAgent))]
+/// <summary>
+/// Simple wandering sheep. No NavMesh — random XZ-direction that re-rolls
+/// every <see cref="changeDirectionInterval"/> seconds. Wolf-proximity
+/// ramps <see cref="Fear"/> 0..1 which scales speed from baseSpeed to
+/// panicSpeed and biases the wander-direction away from the wolf.
+///
+/// Per User-Spec: "lass sie einfach in eine RandomVector2 Direktion laufen
+/// und mehr angst gleich mehr Geschwindigkeit, ist doch viel simpler".
+/// </summary>
 public class SheepNPC : MonoBehaviour
 {
-    [Header("Behaviour")]
-    public float wanderRadius = 8f;
-    public float fleeRadius = 6f;
-    public float wanderInterval = 3f;
+    [Header("Movement")]
+    public float baseSpeed = 1.5f;
+    public float panicSpeed = 7f;
+    public float changeDirectionInterval = 2.5f;
+
+    [Header("Threat")]
+    public float threatRadius = 8f;
+    public float fearGainRate = 1.2f;
+    public float fearDecayRate = 0.4f;
+    [Range(0f, 1f)] public float fleeBias = 0.7f;
+
+    [Header("Arena bounds")]
+    public float arenaHalfExtent = 30f;
 
     public bool IsCaught { get; private set; }
     public int SheepId { get; set; }
+    public float Fear { get; private set; }
 
-    NavMeshAgent _agent;
-    float _wanderTimer;
-    bool _isHost;
+    Vector3 _direction;
+    float _changeTimer;
 
-    void Awake() => _agent = GetComponent<NavMeshAgent>();
-
-    void Start()
+    void Awake()
     {
-        _isHost = ShepherdGameManager.IsHost;
-        _wanderTimer = Random.Range(0f, wanderInterval);
+        // NavMeshAgent often was attached — disable if present so we drive transform directly
+        var nav = GetComponent<UnityEngine.AI.NavMeshAgent>();
+        if (nav != null) nav.enabled = false;
+        _direction = RandomXZDirection();
+    }
 
-        if (RevbClient.Instance != null)
-            RevbClient.Instance.OnEvent += HandleNetEvent;
+    Vector3 RandomXZDirection()
+    {
+        var v = Random.insideUnitCircle.normalized;
+        return new Vector3(v.x, 0f, v.y);
     }
 
     void Update()
     {
-        if (IsCaught || !_isHost) return;
+        if (IsCaught) return;
 
-        var threat = FindNearestThreat();
-        if (threat != null)
-        {
-            var fleeDir = (transform.position - threat.position).normalized;
-            var target = transform.position + fleeDir * fleeRadius;
-            if (NavMesh.SamplePosition(target, out var hit, fleeRadius, NavMesh.AllAreas))
-                _agent.SetDestination(hit.position);
-        }
+        // Fear ramp from nearest wolf
+        var wolfPos = FindNearestWolfPos(out float dist);
+        if (wolfPos.HasValue && dist < threatRadius)
+            Fear = Mathf.Clamp01(Fear + fearGainRate * Time.deltaTime * (1f - dist / threatRadius));
         else
+            Fear = Mathf.Clamp01(Fear - fearDecayRate * Time.deltaTime);
+
+        // Reroll direction periodically; bias flight away from wolf when scared
+        _changeTimer -= Time.deltaTime;
+        if (_changeTimer <= 0f)
         {
-            _wanderTimer -= Time.deltaTime;
-            if (_wanderTimer <= 0f)
+            _changeTimer = changeDirectionInterval * Random.Range(0.7f, 1.3f);
+            _direction = RandomXZDirection();
+            if (Fear > 0.1f && wolfPos.HasValue)
             {
-                _wanderTimer = wanderInterval;
-                SetRandomDestination();
+                var away = (transform.position - wolfPos.Value); away.y = 0; away.Normalize();
+                _direction = Vector3.Slerp(_direction, away, fleeBias * Fear).normalized;
             }
         }
 
-        BroadcastState();
+        // Bounce inside arena
+        var pos = transform.position;
+        if (Mathf.Abs(pos.x) > arenaHalfExtent) _direction.x = -Mathf.Sign(pos.x) * Mathf.Abs(_direction.x);
+        if (Mathf.Abs(pos.z) > arenaHalfExtent) _direction.z = -Mathf.Sign(pos.z) * Mathf.Abs(_direction.z);
+
+        float speed = Mathf.Lerp(baseSpeed, panicSpeed, Fear);
+        transform.position += _direction * speed * Time.deltaTime;
+        if (_direction.sqrMagnitude > 0.001f)
+            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(_direction), Time.deltaTime * 5f);
     }
 
-    Transform FindNearestThreat()
+    Vector3? FindNearestWolfPos(out float dist)
     {
-        Transform nearest = null;
-        float nearestDist = fleeRadius;
-        var wolves = FindObjectsOfType<WolfPlayer>();
+        dist = float.MaxValue;
+        Vector3? nearest = null;
+        var wolves = Object.FindObjectsByType<WolfPlayer>(FindObjectsSortMode.None);
         foreach (var w in wolves)
         {
             float d = Vector3.Distance(transform.position, w.transform.position);
-            if (d < nearestDist) { nearestDist = d; nearest = w.transform; }
+            if (d < dist) { dist = d; nearest = w.transform.position; }
+        }
+        var bots = Object.FindObjectsByType<SimpleAIBot>(FindObjectsSortMode.None);
+        foreach (var b in bots)
+        {
+            if (b.role != SimpleAIBot.Role.Wolf) continue;
+            float d = Vector3.Distance(transform.position, b.transform.position);
+            if (d < dist) { dist = d; nearest = b.transform.position; }
         }
         return nearest;
-    }
-
-    void SetRandomDestination()
-    {
-        var randomDir = Random.insideUnitSphere * wanderRadius;
-        randomDir += transform.position;
-        if (NavMesh.SamplePosition(randomDir, out var hit, wanderRadius, NavMesh.AllAreas))
-            _agent.SetDestination(hit.position);
-    }
-
-    float _broadcastTimer;
-    void BroadcastState()
-    {
-        _broadcastTimer -= Time.deltaTime;
-        if (_broadcastTimer > 0 || RevbClient.Instance == null) return;
-        _broadcastTimer = 0.2f;
-
-        var p = transform.position;
-        var json = $"{{\"id\":{SheepId},\"x\":{p.x:F2},\"y\":{p.y:F2},\"z\":{p.z:F2},\"f\":0}}";
-        RevbClient.Instance.Send("sheep.state", json);
-    }
-
-    void HandleNetEvent(string eventName, string json)
-    {
-        if (eventName != "sheep.state" || _isHost) return;
-        var d = JsonUtility.FromJson<SheepStateData>(json);
-        if (d.id != SheepId) return;
-        transform.position = Vector3.Lerp(transform.position, new Vector3(d.x, d.y, d.z), 0.3f);
     }
 
     public void OnCaught()
     {
         IsCaught = true;
-        _agent.enabled = false;
         gameObject.SetActive(false);
     }
-
-    void OnDestroy()
-    {
-        if (RevbClient.Instance != null)
-            RevbClient.Instance.OnEvent -= HandleNetEvent;
-    }
-
-    [System.Serializable]
-    struct SheepStateData { public int id; public float x, y, z; public int f; }
 }
