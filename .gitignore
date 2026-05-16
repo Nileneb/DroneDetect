@@ -117,3 +117,6 @@ InitTestScene*.unity*
 *.shader
 *.asset
 *.anim
+
+Assets/Polyart
+Assets/ithappy
