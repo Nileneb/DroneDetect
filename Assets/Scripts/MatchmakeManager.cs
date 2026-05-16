@@ -76,6 +76,35 @@ public class MatchmakeManager : MonoBehaviour
         SceneManager.LoadScene(playScene);
     }
 
+    // Reverb-driven matchmake signal — set when MatchFound event arrives.
+    // Polling remains as fallback if WS handshake fails.
+    bool _matchFoundByEvent;
+    string _matchFoundAiRole;
+
+    void OnRevbEvent(string eventName, string dataJson)
+    {
+        if (eventName != "MatchFound") return;
+        Debug.Log($"[MatchmakeManager] MatchFound event: {dataJson}");
+        try
+        {
+            var payload = JsonUtility.FromJson<MatchFoundPayload>(dataJson);
+            _matchFoundByEvent = true;
+            _matchFoundAiRole = payload.ai_fallback ? FindAiRole(payload.players) : null;
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogWarning($"[MatchmakeManager] MatchFound parse failed: {ex.Message}");
+            _matchFoundByEvent = true;
+        }
+    }
+
+    static string FindAiRole(MatchFoundPlayer[] players)
+    {
+        if (players == null) return null;
+        foreach (var p in players) if (p.is_ai) return p.role;
+        return null;
+    }
+
     IEnumerator DoMatchmake(string role)
     {
         // No JWT? → go straight to offline AI play. User-friendly default for demo.
@@ -100,27 +129,41 @@ public class MatchmakeManager : MonoBehaviour
         var resp = JsonUtility.FromJson<MatchmakeResponse>(req.downloadHandler.text);
         Debug.Log($"[MatchmakeManager] code={resp.code} matched={resp.matched} is_host={resp.is_host}");
 
-        // If immediately matched, hand off to play scene
+        // If immediately matched (we joined an existing waiting session), go.
         if (resp.matched)
         {
             LoadPlayScene(resp.code, role, resp.is_host, null);
             yield break;
         }
 
-        // Otherwise poll for opponent until timeout
+        // WHY (reverb-realtime): connect to the private channel so the host
+        //   gets notified the instant a 2nd player joins — no 1.5s polling lag.
+        //   Polling stays as fallback in case WS handshake fails.
+        _matchFoundByEvent = false;
+        _matchFoundAiRole = null;
+        var revb = EnsureRevbClient();
+        if (revb != null)
+        {
+            revb.OnEvent += OnRevbEvent;
+            revb.apiBase = apiBase;
+            revb.Connect(resp.code, jwt);
+        }
+
+        // Polling fallback — runs in parallel to Reverb-event listening
         float elapsed = 0f;
         bool gotOpponent = false;
         while (elapsed < matchmakeTimeoutSeconds && !gotOpponent)
         {
+            if (_matchFoundByEvent) { gotOpponent = true; break; }
             ShowWaiting($"Warte auf Gegner… {Mathf.CeilToInt(matchmakeTimeoutSeconds - elapsed)}s");
             yield return new WaitForSeconds(pollIntervalSeconds);
             elapsed += pollIntervalSeconds;
+            if (_matchFoundByEvent) { gotOpponent = true; break; }
 
             var poll = MakeGet($"{apiBase}/api/shepherd/sessions/{resp.code}");
             yield return poll.SendWebRequest();
             if (poll.result == UnityWebRequest.Result.Success)
             {
-                // Two players in `players` array = matched
                 if (poll.downloadHandler.text.Contains("\"role\":\"wolf\"") &&
                     poll.downloadHandler.text.Contains("\"role\":\"drone\""))
                 {
@@ -129,9 +172,11 @@ public class MatchmakeManager : MonoBehaviour
             }
         }
 
+        if (revb != null) revb.OnEvent -= OnRevbEvent;
+
         if (gotOpponent)
         {
-            LoadPlayScene(resp.code, role, resp.is_host, null);
+            LoadPlayScene(resp.code, role, resp.is_host, _matchFoundAiRole);
             yield break;
         }
 
@@ -214,6 +259,16 @@ public class MatchmakeManager : MonoBehaviour
         return "";
     }
 
+    RevbClient EnsureRevbClient()
+    {
+        if (RevbClient.Instance != null) return RevbClient.Instance;
+        var go = new GameObject("RevbClient");
+        return go.AddComponent<RevbClient>();
+    }
+
     [Serializable] class MatchmakeResponse  { public string code; public string role; public bool is_host; public bool opponent_role_free; public bool matched; }
     [Serializable] class AiFallbackResponse { public string ai_role; public string status; }
+
+    [Serializable] class MatchFoundPlayer  { public int user_id; public string role; public bool is_ai; }
+    [Serializable] class MatchFoundPayload { public string code; public MatchFoundPlayer[] players; public bool ai_fallback; }
 }
