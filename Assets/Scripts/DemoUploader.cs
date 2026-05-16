@@ -61,7 +61,7 @@ public class DemoUploader : MonoBehaviour
     string FindLatestDemoFile()
     {
         if (_recorder == null) return null;
-        var dir = _recorder.DemonstrationDirectoryName;
+        var dir = _recorder.DemonstrationDirectory;
         if (string.IsNullOrEmpty(dir)) dir = "Assets/Demonstrations/DroneSessions";
 
         // In standalone build the recorder writes to Application.persistentDataPath
