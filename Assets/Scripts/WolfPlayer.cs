@@ -80,9 +80,24 @@ public class WolfPlayer : MonoBehaviour
                 if (d.id == PlayerId) return;
                 if (!_remoteWolves.TryGetValue(d.id, out var t))
                 {
-                    var go = _gm != null
-                        ? Instantiate(_gm.remoteWolfPrefab)
-                        : new GameObject($"RemoteWolf_{d.id}");
+                    GameObject go;
+                    if (_gm != null && _gm.remoteWolfPrefab != null)
+                        go = Instantiate(_gm.remoteWolfPrefab);
+                    else if (_gm != null && _gm.localWolfPrefab != null)
+                        // Fallback: use the LOCAL prefab as visual template (strip controller logic)
+                        go = Instantiate(_gm.localWolfPrefab.gameObject);
+                    else
+                        go = new GameObject($"RemoteWolf_{d.id}");
+
+                    go.name = $"RemoteWolf_{d.id}";
+                    // Disable any controller scripts on the clone — it's a pure visual ghost
+                    var remoteWolf = go.GetComponent<WolfPlayer>();
+                    if (remoteWolf != null) { remoteWolf.IsLocal = false; remoteWolf.enabled = false; }
+                    var fear = go.GetComponent<WolfFear>();
+                    if (fear != null) fear.enabled = false;
+                    var cc = go.GetComponent<CharacterController>();
+                    if (cc != null) cc.enabled = false;
+
                     t = go.transform;
                     _remoteWolves[d.id] = t;
                 }

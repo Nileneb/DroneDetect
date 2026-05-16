@@ -102,6 +102,15 @@ public class ShepherdGameManager : MonoBehaviour
 
         _localPlayerId = int.TryParse(GetUrlParam("uid"), out var uid) ? uid : UnityEngine.Random.Range(1000, 9999);
 
+        // CLI/URL override: -api=http://localhost:8000 — points client at local dev server
+        var apiOverride = GetUrlParam("api");
+        if (!string.IsNullOrEmpty(apiOverride))
+        {
+            apiBase = apiOverride.TrimEnd('/') + "/api/shepherd";
+            if (RevbClient.Instance != null)
+                RevbClient.Instance.apiBase = apiOverride.TrimEnd('/');
+        }
+
         for (int i = 0; i < sheep.Length; i++)
         {
             sheep[i].SheepId = i;
@@ -335,6 +344,19 @@ public class ShepherdGameManager : MonoBehaviour
 #if UNITY_WEBGL && !UNITY_EDITOR
         return GetUrlParameter(key);
 #else
+        // Standalone (Linux/Win/Mac) — parse command-line args.
+        // Accepted forms: -key=value, --key=value, -key value, --key value
+        var args = System.Environment.GetCommandLineArgs();
+        for (int i = 0; i < args.Length; i++)
+        {
+            var a = args[i];
+            var prefix1 = "-" + key + "=";
+            var prefix2 = "--" + key + "=";
+            if (a.StartsWith(prefix1)) return a.Substring(prefix1.Length);
+            if (a.StartsWith(prefix2)) return a.Substring(prefix2.Length);
+            if ((a == "-" + key || a == "--" + key) && i + 1 < args.Length)
+                return args[i + 1];
+        }
         return "";
 #endif
     }
