@@ -61,3 +61,39 @@ environment_parameters:
         value: 3
       - name: Level4
         value: 4
+  wind_strength:
+    curriculum:
+      - name: WindLevel0
+        completion_criteria:
+          measure: reward
+          behavior: DroneCSI
+          signal_smoothing: true
+          min_lesson_length: 100
+          threshold: 1.5
+        value: 0.0
+      - name: WindLevel1
+        completion_criteria:
+          measure: reward
+          behavior: DroneCSI
+          signal_smoothing: true
+          min_lesson_length: 100
+          threshold: 2.5
+        value: 0.3
+      - name: WindLevel2
+        completion_criteria:
+          measure: reward
+          behavior: DroneCSI
+          signal_smoothing: true
+          min_lesson_length: 100
+          threshold: 3.5
+        value: 0.6
+      - name: WindLevel3
+        completion_criteria:
+          measure: reward
+          behavior: DroneCSI
+          signal_smoothing: true
+          min_lesson_length: 100
+          threshold: 5.0
+        value: 0.85
+      - name: WindLevel4
+        value: 1.0

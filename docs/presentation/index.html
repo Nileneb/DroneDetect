@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DroneDetect — ML-Agents Drohnen-Curriculum</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/theme/black.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/monokai.css">
+<style>
+  :root {
+    --accent: #7fd8ff;
+    --warn: #ffb347;
+    --good: #5dffa0;
+    --bad: #ff6b6b;
+  }
+  .reveal { font-family: system-ui, -apple-system, sans-serif; }
+  .reveal h1, .reveal h2, .reveal h3 { font-weight: 600; color: var(--accent); }
+  .reveal h1 { letter-spacing: 0.05em; }
+  .reveal section { text-align: left; }
+  .reveal section.center { text-align: center; }
+  .reveal pre { font-size: 0.55em; }
+  .reveal code { font-family: "JetBrains Mono", Consolas, monospace; }
+  .metric-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1rem; margin-top: 1.5rem; }
+  .metric { background: #1a1a2e; padding: 1rem; border-radius: 8px; border: 1px solid #2a2a4f; }
+  .metric .label { color: #888; font-size: 0.7em; text-transform: uppercase; letter-spacing: 0.08em; }
+  .metric .value { color: var(--accent); font-size: 2em; font-weight: 600; line-height: 1; margin-top: 0.3em; }
+  .metric .delta { color: var(--good); font-size: 0.65em; margin-top: 0.4em; }
+  .metric.bad .value { color: var(--bad); }
+  .pipeline { display: grid; grid-template-columns: 1fr 0.3fr 1fr 0.3fr 1fr; align-items: center; gap: 0.5rem; }
+  .pipeline .box { background: #1a1a2e; border: 2px solid var(--accent); border-radius: 8px; padding: 0.8rem; text-align: center; font-size: 0.7em; }
+  .pipeline .arrow { color: var(--accent); font-size: 2em; text-align: center; }
+  .reward-table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+  .reward-table th, .reward-table td { padding: 0.5rem; border-bottom: 1px solid #2a2a4f; text-align: left; font-size: 0.7em; }
+  .reward-table th { color: var(--accent); }
+  .reward-table .pos { color: var(--good); }
+  .reward-table .neg { color: var(--bad); }
+  canvas { background: #1a1a2e; border-radius: 8px; padding: 0.5rem; }
+  .topology { display: grid; grid-template-columns: 1fr 0.4fr 1fr; gap: 1rem; align-items: center; margin-top: 1rem; }
+  .node { background: #1a1a2e; border: 2px solid; border-radius: 12px; padding: 1.2rem; }
+  .node.builder { border-color: var(--warn); }
+  .node.web { border-color: var(--good); }
+  .node h4 { margin: 0 0 0.5rem; }
+  .node ul { margin: 0; padding-left: 1.2em; font-size: 0.7em; }
+  .badge { display: inline-block; padding: 0.15em 0.6em; border-radius: 4px; font-size: 0.65em; font-weight: 600; margin-right: 0.3em; }
+  .badge.done { background: #1e4d2f; color: var(--good); }
+  .badge.todo { background: #4d3a1e; color: var(--warn); }
+  .reveal .footer-note { position: absolute; bottom: 1em; right: 1em; font-size: 0.5em; opacity: 0.5; }
+</style>
+</head>
+<body>
+<div class="reveal"><div class="slides">
+
+<!-- ───────────────── 1. Cover ───────────────── -->
+<section class="center">
+  <h1>DroneDetect</h1>
+  <h3 style="color:#888;font-weight:300;">Curriculum-basiertes Reinforcement Learning für autonome Schutz-Drohnen</h3>
+  <p style="margin-top:3em;font-size:0.7em;color:#666">Benedikt Linn · Code University Berlin · 2026</p>
+</section>
+
+<!-- ───────────────── 2. Problem ───────────────── -->
+<section>
+  <h2>Problemstellung</h2>
+  <ul>
+    <li>Drohne als <strong style="color:var(--accent)">aktiver Schutz-Agent</strong> für eine Schafherde</li>
+    <li>Bedrohung: Wölfe, regelbasiert oder von Menschen gesteuert (Multiplayer)</li>
+    <li>Drohne darf <em>nicht</em> kollidieren — defensive Aktion: Scarer (Schall+Licht) zur Wolf-Furcht-Induktion</li>
+    <li>Constraint: muss in <strong style="color:var(--accent)">3 Minuten</strong> trainiert werden können (Reset-Buffer 30s)</li>
+  </ul>
+  <p style="margin-top:1.5em;font-size:0.7em;color:#888">→ Klassisches Multi-Agent / Asymmetric-Roles Szenario mit physikalisch realistischer Drohnen-Dynamik (AR-Drone 2.0 Digital Twin)</p>
+</section>
+
+<!-- ───────────────── 3. Architektur ───────────────── -->
+<section>
+  <h2>Pipeline-Architektur</h2>
+  <div class="pipeline">
+    <div class="box">Phase 1<br><strong>DroneCSI</strong><br><small>Flug-Grundkompetenz</small></div>
+    <div class="arrow">→</div>
+    <div class="box">Phase 4<br><strong>DroneShepherd</strong><br><small>Hüte-Verhalten</small></div>
+    <div class="arrow">→</div>
+    <div class="box"><strong>WebGL Deploy</strong><br><small>app.linn.games</small></div>
+  </div>
+  <table class="reward-table" style="margin-top:2em">
+    <tr><th>Phase</th><th>Algorithmus</th><th>Curriculum</th><th>Demo</th></tr>
+    <tr><td>1: DroneCSI</td><td>PPO</td><td>5 Levels (parcours_difficulty + wind_strength)</td><td>—</td></tr>
+    <tr><td>4: DroneShepherd</td><td>PPO + GAIL</td><td>Init aus DroneCSI.onnx (Transfer)</td><td>Human-Demos (4 Hz Recording)</td></tr>
+  </table>
+</section>
+
+<!-- ───────────────── 4. Observation/Action Space ───────────────── -->
+<section>
+  <h2>Observation &amp; Action Space</h2>
+  <h3 style="font-size:0.8em">14 Observations · 4 Continuous Actions</h3>
+  <table class="reward-table">
+    <tr><th>Index</th><th>Observation</th><th>Range</th></tr>
+    <tr><td>0</td><td>Altitude / 10</td><td>[0,1]</td></tr>
+    <tr><td>1–3</td><td>Velocity (vx, vy, vz) / 5</td><td>[-1,1]</td></tr>
+    <tr><td>4–6</td><td>Euler-Rotation / 180</td><td>[-1,1]</td></tr>
+    <tr><td>7–9</td><td>Angular-Velocity / 5</td><td>[-1,1]</td></tr>
+    <tr><td>10–12</td><td>Direction-to-Target (local, normalized)</td><td>unit</td></tr>
+    <tr><td>13</td><td>Distance-to-Target / 50</td><td>[0,1]</td></tr>
+  </table>
+  <p style="margin-top:1em;font-size:0.7em;color:#888">Identische Struktur in beiden Phasen → DroneCSI.onnx ist drop-in Curriculum-Start für Phase 4</p>
+</section>
+
+<!-- ───────────────── 5. DroneCSI Hyperparameter ───────────────── -->
+<section>
+  <h2>Phase 1: DroneCSI — PPO Setup</h2>
+  <pre><code class="yaml" data-trim>
+behaviors:
+  DroneCSI:
+    trainer_type: ppo
+    hyperparameters:
+      batch_size: 512        # mini-batch per PPO-update
+      buffer_size: 10240     # full rollout vor update (20 × batch_size)
+      learning_rate: 3.0e-4
+      beta: 5.0e-3           # entropy bonus → exploration
+      epsilon: 0.2           # PPO clipping
+      learning_rate_schedule: linear
+    network_settings:
+      hidden_units: 256
+      num_layers: 3          # tieferes MLP → bessere Dynamik-Repräsentation
+      normalize: true
+    max_steps: 1_000_000
+    time_horizon: 256        # length of return-bootstrap
+  </code></pre>
+</section>
+
+<!-- ───────────────── 6. Curriculum DroneCSI ───────────────── -->
+<section>
+  <h2>Phase 1: Curriculum-Progression</h2>
+  <p>Zwei orthogonale Schwierigkeitsachsen, beide reward-getriggert:</p>
+  <table class="reward-table">
+    <tr><th>Lesson</th><th>Parcours</th><th>Wind</th><th>Reward-Threshold</th></tr>
+    <tr><td>0</td><td>einfach</td><td>still</td><td>1.5 → next</td></tr>
+    <tr><td>1</td><td>medium</td><td>0.3</td><td>2.5 → next</td></tr>
+    <tr><td>2</td><td>schwerer</td><td>0.6</td><td>3.5 → next</td></tr>
+    <tr><td>3</td><td>komplex</td><td>0.85</td><td>5.0 → next</td></tr>
+    <tr><td>4 ✓</td><td>full</td><td>full storm</td><td>terminal</td></tr>
+  </table>
+  <p style="margin-top:1.5em;font-size:0.75em;color:var(--good)">→ Alle 5 Levels erfolgreich abgeschlossen in 150k steps · ~3h Wall-Time auf BigOne (RTX 4090)</p>
+</section>
+
+<!-- ───────────────── 7. Results ───────────────── -->
+<section>
+  <h2>Phase 1: Trainings-Ergebnisse</h2>
+  <div class="metric-grid">
+    <div class="metric"><div class="label">Cumulative Reward</div><div class="value">35.25</div><div class="delta">↑ +39.5 ggü. random</div></div>
+    <div class="metric"><div class="label">Episode Length</div><div class="value">297</div><div class="delta">↑ von 158 (88% länger)</div></div>
+    <div class="metric"><div class="label">Curriculum Level</div><div class="value">4 / 4</div><div class="delta">✓ alle erreicht</div></div>
+  </div>
+  <canvas id="rewardChart" width="900" height="280" style="margin-top:2rem"></canvas>
+</section>
+
+<!-- ───────────────── 8. Phase 4 Reward Design ───────────────── -->
+<section>
+  <h2>Phase 4: Reward-Shaping (NEU)</h2>
+  <p style="font-size:0.75em">Spec: <em>"Je mehr Furcht die Wölfe, desto mehr Reward. Jedes überlebende Schaf ist ein Multiplikator. 5 min Episode. Strafe für getötete Schafe."</em></p>
+  <table class="reward-table">
+    <tr><th>Signal</th><th>Wert</th><th>Trigger</th></tr>
+    <tr><td>Δ Wolf-Furcht (per step)</td><td class="pos">+4 × dFear</td><td>Wolf akkumuliert Furcht via Scarer</td></tr>
+    <tr><td>Wolf-Panic-Event</td><td class="pos">+3.0</td><td>einmalig pro Panic-Trigger</td></tr>
+    <tr><td>Schaf am Leben</td><td class="pos">+0.0003 × N_sheep</td><td>jeden FixedUpdate</td></tr>
+    <tr><td>Schaf-Tod</td><td class="neg">−3.0</td><td>sofort beim Catch</td></tr>
+    <tr><td>Drohne-Crash (Emergency)</td><td class="neg">−1.0</td><td>EndEpisode</td></tr>
+    <tr><td>Episode-Ende: Schafe gerettet</td><td class="pos">+5 × N_survived</td><td>EndRound()</td></tr>
+    <tr><td>Perfect Defense</td><td class="pos">× 1.5 multiplier</td><td>alle Schafe überlebt</td></tr>
+    <tr><td>Schnell-Sieg-Bonus</td><td class="pos">+0.05 / verbleibende Sekunde</td><td>nur bei Perfect Defense</td></tr>
+  </table>
+</section>
+
+<!-- ───────────────── 9. Anti-Exploit ───────────────── -->
+<section>
+  <h2>Reward-Hacking Prevention</h2>
+  <p><strong>Gefahr:</strong> Agent könnte lernen, "Wölfe in Furcht halten" durch sehr aggressives Verhalten zu maximieren — Schafe als beifang opfern.</p>
+  <h3 style="margin-top:1em">Schutz-Maßnahmen:</h3>
+  <ul style="font-size:0.8em">
+    <li><code>survivalRatio = sheepSaved / initialSheepCount</code></li>
+    <li>Episode-End-Bonus wird mit <code>Lerp(0.2, 1.0, survivalRatio)</code> skaliert</li>
+    <li>→ wer alle Schafe verliert: 80% Reward-Penalty auf End-Bonus auch wenn Furcht hoch war</li>
+    <li>→ wer alle rettet: voller Reward + 1.5× Multiplikator</li>
+  </ul>
+  <pre><code class="csharp" data-trim>
+// Survival-ratio shaping: pushes agent away from
+// "trade sheep for fear-spam" exploits.
+AddReward(endBonus * Mathf.Lerp(0.2f, 1f, survivalRatio));
+EndEpisode();
+  </code></pre>
+</section>
+
+<!-- ───────────────── 10. GAIL ───────────────── -->
+<section>
+  <h2>Phase 4: GAIL Imitation-Learning</h2>
+  <p style="font-size:0.8em">Reine Reward-Shaping würde Exploration zu langsam machen → wir injizieren menschliche Demonstrationen.</p>
+  <pre><code class="yaml" data-trim>
+reward_signals:
+  extrinsic:
+    gamma: 0.99
+    strength: 1.0
+  gail:
+    strength: 0.5             # weighted gegen extrinsic
+    gamma: 0.99
+    demo_path: Assets/Demonstrations/DroneSessions/
+    use_actions: true         # GAIL diskriminiert auf (state, action)
+    use_vail: false
+  </code></pre>
+  <ul style="font-size:0.75em">
+    <li><strong>Demo-Recording:</strong> via DemonstrationRecorder, 4 Hz Position-Logging</li>
+    <li><strong>Replay-Pipeline:</strong> bestehende Multiplayer-Sessions → GAIL-Demos via app.linn.games <code>shepherd.sessions</code> API</li>
+    <li><strong>Bootstrap:</strong> DroneCSI.onnx als Initial-Policy (Transfer)</li>
+  </ul>
+</section>
+
+<!-- ───────────────── 11. Deploy-Topologie ───────────────── -->
+<section>
+  <h2>Deploy-Topologie: Multi-Host</h2>
+  <div class="topology">
+    <div class="node builder">
+      <h4>BigOne · 192.168.178.11</h4>
+      <ul>
+        <li>RTX 4090 + 64 GB RAM</li>
+        <li>Unity 6000.6.0a3</li>
+        <li>ML-Agents Training</li>
+        <li>WebGL/WebGPU Build Container</li>
+        <li>Docker Swarm <em>Manager</em></li>
+      </ul>
+    </div>
+    <div style="text-align:center;font-size:2em;color:var(--accent)">⇄</div>
+    <div class="node web">
+      <h4>u-server · 192.168.178.12</h4>
+      <ul>
+        <li>app.linn.games (Laravel)</li>
+        <li>nginx + PHP-FPM + Postgres</li>
+        <li>Shepherd-Blade-Hosting</li>
+        <li>NFS-Volume: <code>/srv/shepherd-artifacts</code></li>
+        <li>Docker Swarm <em>Worker</em></li>
+      </ul>
+    </div>
+  </div>
+  <p style="margin-top:1.5em;font-size:0.65em;color:#888">Overlay-Network <code>shepherd-net</code> · NFS-shared <code>shepherd-artifacts</code>-Volume · constraint-based Service-Placement</p>
+</section>
+
+<!-- ───────────────── 12. Build/Deploy-Flow ───────────────── -->
+<section>
+  <h2>Build &amp; Deploy Flow</h2>
+  <ol style="font-size:0.8em">
+    <li>Training auf BigOne erzeugt <code>DroneCSI.onnx</code> + <code>DroneShepherd.onnx</code></li>
+    <li>Models werden in <code>Assets/Models/</code> committed (LFS optional)</li>
+    <li><code>docker stack deploy -c deploy/swarm/shepherd-stack.yml shepherd</code></li>
+    <li>Unity-Builder-Container startet auf BigOne (constraint: <code>role=builder</code>)</li>
+    <li>Build-Output landet im NFS-Volume → automatisch auch sichtbar auf u-server</li>
+    <li><code>nginx</code> auf u-server serviced <code>/shepherd/Build/*.br</code> mit Brotli-Headern</li>
+    <li><code>app.linn.games/shepherd/play</code> lädt Unity-Instance über loader.js</li>
+  </ol>
+</section>
+
+<!-- ───────────────── 13. Live-Demo-Aufbau ───────────────── -->
+<section>
+  <h2>Live-Demo Walkthrough</h2>
+  <ol style="font-size:0.85em">
+    <li>Login auf <code>app.linn.games</code></li>
+    <li>Sidebar → <strong>ShepherdArena</strong></li>
+    <li>Rolle wählen (Wolf 🐺 oder Drohne 🚁)</li>
+    <li>Session-Code aus Backend / Auto-Join offener Session</li>
+    <li><strong>3 min Runde</strong> (Demo: roundDuration=180s) bzw. <strong>5 min</strong> (Training: 300s)</li>
+    <li>HUD zeigt Timer + Sheep-Status + Wolf-Furcht-Balken</li>
+    <li>Episode-Ende: Score-Summary + automatischer Event-Upload</li>
+  </ol>
+  <p style="margin-top:1.5em;font-size:0.7em;color:#888">Im Demo-Modus läuft Drohne via <code>DroneCSI.onnx</code>-Inference; im Trainings-Modus über Heuristic-Keyboard für GAIL-Demo-Erfassung</p>
+</section>
+
+<!-- ───────────────── 14. Stand & Outlook ───────────────── -->
+<section>
+  <h2>Stand &amp; Roadmap</h2>
+  <h3>Done</h3>
+  <p>
+    <span class="badge done">✓</span>Phase 1: DroneCSI 150k steps, 35.2 reward
+    <span class="badge done">✓</span>Phase 4: Reward-Shaping implementiert
+    <span class="badge done">✓</span>5-min Episode + Schaf-Multiplikator + Crash-Penalty
+    <span class="badge done">✓</span>GAIL-Demo-API in app.linn.games
+    <span class="badge done">✓</span>Shepherd-Blade-Routes + Unity-Loader
+    <span class="badge done">✓</span>Reward-Hack-Schutz via Survival-Ratio
+  </p>
+  <h3 style="margin-top:1em">In Progress</h3>
+  <p>
+    <span class="badge todo">⧗</span>Phase 4 Training-Run (1.5M steps geplant)
+    <span class="badge todo">⧗</span>WebGL-Build (lokal) → Deploy
+    <span class="badge todo">⧗</span>Docker-Swarm-Init zwischen BigOne+u-server
+  </p>
+  <h3 style="margin-top:1em">Next</h3>
+  <p>
+    <span class="badge todo">○</span>WebGPU-Build (besseres Lighting/PostFX)
+    <span class="badge todo">○</span>Multiplayer-PvP-Tournament-Mode
+    <span class="badge todo">○</span>Recurrent Net + LSTM für längere Strategie-Horizons
+  </p>
+</section>
+
+<!-- ───────────────── 15. Q&A ───────────────── -->
+<section class="center">
+  <h1>Q &amp; A</h1>
+  <p style="margin-top:2em">
+    <a href="https://app.linn.games/shepherd" style="color:var(--accent)">app.linn.games/shepherd</a>
+  </p>
+  <p style="font-size:0.7em;color:#666;margin-top:3em">github.com/nileneb/DroneDetect</p>
+</section>
+
+</div></div>
+
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/dist/reveal.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/reveal.js@5.1.0/plugin/highlight/highlight.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.4/dist/chart.umd.min.js"></script>
+<script>
+Reveal.initialize({
+  hash: true,
+  controls: true,
+  progress: true,
+  transition: 'slide',
+  plugins: [RevealHighlight],
+  width: 1280,
+  height: 800,
+});
+
+// Chart data extracted from real Tensorboard run (results/v8_1/DroneCSI)
+const trainingData = {
+  steps: [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 110000, 120000, 130000, 140000],
+  reward: [-4.24, 0.04, 2.09, 2.35, 2.42, 3.34, 6.48, 12.73, 29.51, 33.39, 32.82, 34.29, 33.94, 35.25],
+  lesson: [0, 0, 1, 1, 2, 2, 2, 3, 3, 3, 3, 3, 3, 4],
+};
+
+Reveal.on('ready', () => {
+  const ctx = document.getElementById('rewardChart');
+  if (!ctx) return;
+  new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: trainingData.steps.map(s => (s/1000).toFixed(0) + 'k'),
+      datasets: [
+        {
+          label: 'Cumulative Reward',
+          data: trainingData.reward,
+          borderColor: '#7fd8ff',
+          backgroundColor: 'rgba(127,216,255,0.1)',
+          tension: 0.3,
+          fill: true,
+          yAxisID: 'y',
+        },
+        {
+          label: 'Curriculum Lesson',
+          data: trainingData.lesson,
+          borderColor: '#ffb347',
+          backgroundColor: 'transparent',
+          stepped: true,
+          tension: 0,
+          yAxisID: 'y1',
+        }
+      ],
+    },
+    options: {
+      responsive: false,
+      plugins: {
+        legend: { labels: { color: '#ccc' } },
+        title: { display: true, text: 'DroneCSI Training: Reward + Curriculum-Progression über 140k Steps', color: '#7fd8ff', font: { size: 14 } }
+      },
+      scales: {
+        x: { ticks: { color: '#888' }, grid: { color: '#222' } },
+        y: { type: 'linear', position: 'left', ticks: { color: '#7fd8ff' }, grid: { color: '#222' }, title: { display: true, text: 'Reward', color: '#7fd8ff' } },
+        y1: { type: 'linear', position: 'right', min: 0, max: 4, ticks: { color: '#ffb347', stepSize: 1 }, grid: { drawOnChartArea: false }, title: { display: true, text: 'Lesson', color: '#ffb347' } },
+      },
+    },
+  });
+});
+</script>
+</body>
+</html>

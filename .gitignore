@@ -13,6 +13,12 @@
 *.log
 /Realistic Drone
 Assets/Realistic Drone
+
+# Unused asset packs — bloated WebGL builds + caused 72GB shader reimport on Unity 6 alpha.
+/_unused_assets/
+
+# transient build markers
+/tmp/dronedetect_webgl_build_status.txt
 # By default unity supports Blender asset imports, *.blend1 blender files do not need to be commited to version control.
 *.blend1
 *.blend1.meta

@@ -14,6 +14,9 @@ public class WolfPlayer : MonoBehaviour
     public int PlayerId { get; set; }
     public bool IsLocal { get; set; }
 
+    [Tooltip("Für Agent1/Solo-Betrieb: immer lokal steuern (kein ShepherdGameManager nötig)")]
+    public bool localPlayerOverride = false;
+
     CharacterController _cc;
     WolfFear _fear;
     readonly Dictionary<int, Transform> _remoteWolves = new();
@@ -23,6 +26,7 @@ public class WolfPlayer : MonoBehaviour
 
     void Start()
     {
+        if (localPlayerOverride) IsLocal = true;
         _gm = FindFirstObjectByType<ShepherdGameManager>();
         _fear = GetComponent<WolfFear>();
         if (IsLocal && RevbClient.Instance != null)

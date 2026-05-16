@@ -59,6 +59,26 @@ public class DroneAgent : Agent
     [Tooltip("Hoehe unter der ein Absturz erkannt wird (m ueber Spawn)")]
     public float crashAltitude = 0.15f;
 
+    // ═══════════════════════ Public Properties (HUD) ═══════════════════════
+
+    public DroneState CurrentDroneState => _drone?.State ?? DroneState.Landed;
+    public float Altitude => _drone?.Navdata.altitude ?? 0f;
+    public float Speed
+    {
+        get
+        {
+            if (_drone == null) return 0f;
+            var n = _drone.Navdata;
+            return Mathf.Sqrt(n.vx * n.vx + n.vy * n.vy + n.vz * n.vz);
+        }
+    }
+    public float Battery => _drone?.Navdata.battery ?? 0f;
+    public int TargetsCollected => _targetsCollected;
+    public int TotalTargets => _totalTargets;
+    public bool AllTargetsCollected => _totalTargets > 0 && _targetsCollected >= _totalTargets;
+    public int StepsInEpisode => _stepsInEpisode;
+    public int CurrentEpisodeStepLimit => episodeStepLimit;
+
     // Interne Variablen
     List<Vector3> _targetStartPositions = new List<Vector3>();
     List<Quaternion> _targetStartRotations = new List<Quaternion>();
@@ -78,11 +98,19 @@ public class DroneAgent : Agent
     public List<GameObject> obstacles = new List<GameObject>();
 
     [Header("Curriculum")]
-    [Tooltip("-1 = automatisch (vom Trainer). 0-3 = manueller Override (z.B. fuer Demo-Aufnahme).")]
+    [Tooltip("-1 = automatisch (vom Trainer). 0-4 = manueller Override (z.B. fuer Demo-Aufnahme).")]
     public int overrideCurriculumLevel = -1;
 
     [Header("Parcours Varianten")]
     public List<ParcourLayout> parcourLayouts = new List<ParcourLayout>();
+
+    [Header("Depth Camera")]
+    [Tooltip("Optionale DroneDepthCamera-Komponente (child GameObject).")]
+    public DroneDepthCamera depthCamera;
+
+    [Header("Target-Jitter")]
+    [Tooltip("Zufaelliger Positions-Offset pro Target bei jedem Episode-Reset.")]
+    public Vector3 targetJitterBounds = new Vector3(1.5f, 0.5f, 1.5f);
 
     public override void Initialize()
     {
@@ -94,6 +122,8 @@ public class DroneAgent : Agent
         _spawnPosition = transform.position;
 
         Debug.Log($"[DroneAgent] Initialize OK. MaxStep={MaxStep}, episodeStepLimit={episodeStepLimit}, SpawnY={_spawnPosition.y:F2}");
+
+        DroneHUD.CreateHUD(this);
 
         // Originalpositionen der Targets sichern
         _totalTargets = targets.Count;
@@ -327,7 +357,21 @@ public class DroneAgent : Agent
             Debug.Log($"[DroneAgent] Parcours: {layout.name}, Level: {level}");
         }
 
-        EnableObstacles(level >= 3);
+        // Jitter: zufaelliger Positions-Offset auf Basis-Positionen anwenden
+        if (targetJitterBounds.sqrMagnitude > 0f)
+        {
+            for (int i = 0; i < targets.Count; i++)
+            {
+                if (targets[i] == null) continue;
+                Vector3 jitter = new Vector3(
+                    Random.Range(-targetJitterBounds.x, targetJitterBounds.x),
+                    Random.Range(-targetJitterBounds.y, targetJitterBounds.y),
+                    Random.Range(-targetJitterBounds.z, targetJitterBounds.z));
+                targets[i].transform.position = _targetStartPositions[i] + jitter;
+            }
+        }
+
+        EnableObstacles(level);
         UpdateTargetVisuals();
     }
 
@@ -337,16 +381,21 @@ public class DroneAgent : Agent
         {
             case 0: return Mathf.Min(1, targets.Count);
             case 1: return Mathf.Min(2, targets.Count);
+            case 2: return Mathf.Min(3, targets.Count);
             default: return targets.Count;
         }
     }
 
-    void EnableObstacles(bool enable)
+    void EnableObstacles(int level)
     {
+        bool active = level >= 3;
+        bool moving = level >= 4;
         for (int i = 0; i < obstacles.Count; i++)
         {
-            if (obstacles[i] != null)
-                obstacles[i].SetActive(enable);
+            if (obstacles[i] == null) continue;
+            obstacles[i].SetActive(active);
+            var mo = obstacles[i].GetComponent<MovingObstacle>();
+            if (mo != null) mo.enabled = moving;
         }
     }
 
@@ -449,6 +498,7 @@ public class DroneAgent : Agent
         if (_drone == null || _isEpisodeEnding) return;
 
         _stepsInEpisode++;
+        depthCamera?.NotifyStep();
         if (episodeStepLimit > 0 && _stepsInEpisode >= episodeStepLimit)
         {
             AddReward(timeoutPenalty);
