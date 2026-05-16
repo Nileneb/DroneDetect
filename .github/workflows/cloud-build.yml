@@ -1,0 +1,184 @@
+name: Cloud Build (Windows + macOS)
+
+# WHY (build-pipeline): Linux builds laufen lokal auf BigOne (GPU host).
+# Windows + macOS sind die teuren Cross-Compile-Pfade — die schieben wir
+# in die Cloud. Public repo → unlimited GH-Actions minutes.
+#
+# Required secrets (Repo → Settings → Secrets and variables → Actions):
+#   UNITY_LICENSE      ULF file content (s. README am Ende der Datei)
+#   UNITY_EMAIL        Unity-Konto-Email
+#   UNITY_PASSWORD     Unity-Konto-Passwort
+#   DEPLOY_HOST        u-server IP/host  (e.g. 192.168.178.12 oder app.linn.games)
+#   DEPLOY_USER        SSH-User          (e.g. nileneb)
+#   DEPLOY_SSH_KEY     SSH private key with deploy permissions
+#   DEPLOY_PATH        Zielpfad auf Server (e.g. /var/www/app.linn.games/public/shepherd/downloads)
+#
+# Trigger:
+#   - push auf main (bei Asset-/Script-Änderungen)
+#   - manuell via "Run workflow" Button (workflow_dispatch)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Assets/**'
+      - 'Packages/**'
+      - 'ProjectSettings/**'
+      - '.github/workflows/cloud-build.yml'
+  workflow_dispatch:
+    inputs:
+      deploy:
+        description: 'Deploy to app.linn.games after build'
+        type: boolean
+        default: true
+
+concurrency:
+  group: cloud-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build ${{ matrix.targetPlatform }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - targetPlatform: StandaloneWindows64
+            artifactName: shepherd-windows-x64
+            zipBinary: ShepherdArena
+          - targetPlatform: StandaloneOSX
+            artifactName: shepherd-macos-universal
+            zipBinary: ShepherdArena.app
+
+    steps:
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          df -h
+
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+          fetch-depth: 0
+
+      - name: Cache Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ matrix.targetPlatform }}-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-${{ matrix.targetPlatform }}-
+            Library-
+
+      - name: Build with Unity
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+        with:
+          unityVersion: 6000.4.7f1
+          targetPlatform: ${{ matrix.targetPlatform }}
+          buildName: ShepherdArena
+          buildsPath: build
+          buildMethod: BuildScript.CloudBuild
+          allowDirtyBuild: true
+
+      - name: Package artifact
+        run: |
+          set -euo pipefail
+          cd build/${{ matrix.targetPlatform }}
+          ls -la
+          if [ "${{ matrix.targetPlatform }}" = "StandaloneWindows64" ]; then
+            # ShepherdArena.exe + ShepherdArena_Data + MonoBleedingEdge + ...
+            zip -qry "../../${{ matrix.artifactName }}.zip" .
+          else
+            # Strip macOS quarantine + ensure exec bits before zipping
+            find ShepherdArena.app -name '*.dylib' -o -name 'ShepherdArena' | xargs -I{} chmod +x {} || true
+            zip -qry "../../${{ matrix.artifactName }}.zip" ShepherdArena.app
+          fi
+          cd ../..
+          ls -lh "${{ matrix.artifactName }}.zip"
+
+      - name: Upload to GitHub artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifactName }}
+          path: ${{ matrix.artifactName }}.zip
+          retention-days: 14
+
+      - name: Deploy to app.linn.games
+        if: github.event_name == 'push' || github.event.inputs.deploy == 'true'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+        run: |
+          if [ -z "${DEPLOY_SSH_KEY:-}" ] || [ -z "${DEPLOY_HOST:-}" ]; then
+            echo "::warning::Deploy secrets not set — skipping upload to app.linn.games"
+            exit 0
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          echo "$DEPLOY_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+          rsync -avz -e "ssh -i ~/.ssh/id_deploy -o StrictHostKeyChecking=accept-new" \
+            "${{ matrix.artifactName }}.zip" \
+            "${DEPLOY_USER}@${DEPLOY_HOST}:${DEPLOY_PATH}/"
+          echo "::notice::Deployed → https://app.linn.games/shepherd/downloads/${{ matrix.artifactName }}.zip"
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: "Cloud build #${{ github.run_number }}"
+          body: |
+            Automated build from `${{ github.sha }}`.
+            - Windows x64 (IL2CPP)
+            - macOS universal (Mono)
+            - Linux x64 (lokal, separat hochgeladen)
+          files: artifacts/*.zip
+          generate_release_notes: false
+          fail_on_unmatched_files: false
+
+# ─────────────────────────────────────────────────────────────────────
+# Unity License setup (einmalig):
+#
+# 1. Activation request file lokal generieren:
+#      /home/nileneb/Unity/Hub/Editor/6000.4.7f1/Editor/Unity \
+#        -batchmode -nographics -quit -createManualActivationFile
+#    → erzeugt Unity_v6000.4.7f1.alf im Working-Dir.
+#
+# 2. .alf hochladen → https://license.unity3d.com/manual
+#    → Personal-License auswählen → .ulf herunterladen.
+#
+# 3. ULF-Inhalt als Repo-Secret UNITY_LICENSE setzen:
+#      gh secret set UNITY_LICENSE < Unity_v6000.4.7f1.ulf
+#      gh secret set UNITY_EMAIL --body 'benedikt.linn@code.berlin'
+#      gh secret set UNITY_PASSWORD --body '<dein-passwort>'
+#
+# 4. SSH-Deploy secrets:
+#      ssh-keygen -t ed25519 -f /tmp/deploy_key -N ''
+#      ssh-copy-id -i /tmp/deploy_key.pub nileneb@<u-server>
+#      gh secret set DEPLOY_SSH_KEY < /tmp/deploy_key
+#      gh secret set DEPLOY_HOST --body '192.168.178.12'
+#      gh secret set DEPLOY_USER --body 'nileneb'
+#      gh secret set DEPLOY_PATH --body '/var/www/app.linn.games/public/shepherd/downloads'
+#      rm /tmp/deploy_key /tmp/deploy_key.pub
+# ─────────────────────────────────────────────────────────────────────
