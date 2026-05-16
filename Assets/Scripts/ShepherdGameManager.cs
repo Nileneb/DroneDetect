@@ -144,6 +144,12 @@ public class ShepherdGameManager : MonoBehaviour
             Debug.LogError("[ShepherdGM] RevbClient.Instance is null — multiplayer disabled. No NetworkManager GameObject in scene?");
         }
 
+        // WHY: the scene has a pre-placed Wolf GameObject (left over from Agent1 training mode)
+        // with localPlayerOverride=true. DroneControlPanel.BootstrapSceneMode activates it when
+        // shepherdMode=true, and its WolfPlayer.Start() then sets IsLocal=true — which makes
+        // LocalPlayerCamera follow IT, not the spawned drone. Strip the relic before spawning.
+        StripScenePreplacedActors();
+
         if (_localRole == "wolf")
             SpawnLocalWolf();
         else
@@ -155,6 +161,11 @@ public class ShepherdGameManager : MonoBehaviour
             Debug.Log("[ShepherdGM] Spawning AI bot for role: " + _aiRole);
             SpawnAiBot(_aiRole);
         }
+
+        // WHY: sheep prefab carries a NavMeshAgent from earlier wave-mode design. Even when
+        // disabled in Awake, the native NavMeshAgent occasionally drags transforms toward
+        // its default destination (0,0,0). Hard-destroy it + reseed positions if collapsed.
+        RepairSheep();
 
         if (IsHost)
             StartCoroutine(WaitThenStartRound());
@@ -202,6 +213,14 @@ public class ShepherdGameManager : MonoBehaviour
             Debug.LogError("[ShepherdGM] AI bot spawn failed — local prefab for " + role + " missing");
             return;
         }
+
+        // WHY: AI-bot prefab carries cameras (drone has GroundCam/DepthCam/MainCam, wolf may
+        // have a follow-cam). Multiple enabled cameras fight LocalPlayerCamera for the render
+        // target. Disable any camera in the bot hierarchy so only LocalPlayerCamera renders.
+        foreach (var cam in botGo.GetComponentsInChildren<Camera>(true))
+            cam.enabled = false;
+        foreach (var listener in botGo.GetComponentsInChildren<AudioListener>(true))
+            listener.enabled = false;
 
         var ai = botGo.AddComponent<SimpleAIBot>();
         ai.role = role == "wolf" ? SimpleAIBot.Role.Wolf : SimpleAIBot.Role.Drone;
@@ -390,6 +409,53 @@ public class ShepherdGameManager : MonoBehaviour
 
     [System.Serializable]
     class SheepCaughtData { public int sheep_id; public int caught; public int remaining; }
+
+    // WHY: ShepherdArena scene was built for Agent1 training and contains a stale Wolf
+    // GameObject with localPlayerOverride=true. Without stripping it, LocalPlayerCamera
+    // follows the wolf even when the user picked drone.
+    void StripScenePreplacedActors()
+    {
+        foreach (var wolf in FindObjectsByType<WolfPlayer>(FindObjectsSortMode.None))
+        {
+            if (wolf == null) continue;
+            wolf.localPlayerOverride = false;
+            wolf.IsLocal = false;
+            wolf.gameObject.SetActive(false);
+        }
+        foreach (var dp in FindObjectsByType<DronePlayer>(FindObjectsSortMode.None))
+        {
+            if (dp == null) continue;
+            dp.IsLocal = false;
+            dp.gameObject.SetActive(false);
+        }
+    }
+
+    // WHY: scene-sheep have stale NavMeshAgent + occasionally collapse to origin. Hard-fix:
+    // destroy any NavMeshAgent, ensure SheepNPC is enabled, and re-spread sheep that ended up
+    // bunched at origin so user sees them grazing across the arena.
+    void RepairSheep()
+    {
+        var all = FindObjectsByType<SheepNPC>(FindObjectsSortMode.None);
+        for (int i = 0; i < all.Length; i++)
+        {
+            var s = all[i];
+            if (s == null) continue;
+            var nav = s.GetComponent<UnityEngine.AI.NavMeshAgent>();
+            if (nav != null) Destroy(nav);
+            s.enabled = true;
+            // Disable any AI component we don't recognise (defensive — old WolfFear-style hooks)
+            var anim = s.GetComponent<Animator>();
+            if (anim != null) anim.applyRootMotion = false;
+            // Reseed clumped positions
+            if (s.transform.position.sqrMagnitude < 1f)
+            {
+                var ang = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
+                var r = UnityEngine.Random.Range(8f, 20f);
+                s.transform.position = new Vector3(Mathf.Cos(ang) * r, s.transform.position.y, Mathf.Sin(ang) * r);
+            }
+        }
+        Debug.Log($"[ShepherdGM] RepairSheep: cleaned {all.Length} sheep");
+    }
 
     void SpawnLocalWolf()
     {

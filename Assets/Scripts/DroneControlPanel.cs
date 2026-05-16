@@ -42,6 +42,16 @@ public class DroneControlPanel : MonoBehaviour
     void Start()
     {
         BootstrapSceneMode();
+        // WHY: shepherd PvP/single-player mode has no concept of "Demo recording" vs "AI flight".
+        // The Play/AI buttons are training-mode-only. Hide them + the panel chrome in Shepherd.
+        if (shepherdMode)
+        {
+            if (btnPlay != null)      btnPlay.gameObject.SetActive(false);
+            if (btnAI != null)        btnAI.gameObject.SetActive(false);
+            if (modeLabel != null)    modeLabel.gameObject.SetActive(false);
+            if (recIndicator != null) recIndicator.gameObject.SetActive(false);
+            return;
+        }
         ApplyMode(DroneMode.Play);
     }
 
