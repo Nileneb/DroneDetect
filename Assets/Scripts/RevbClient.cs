@@ -95,6 +95,7 @@ public class RevbClient : MonoBehaviour
 
     public void Connect(string sessionCode, string jwt)
     {
+        Debug.Log($"[RevbClient] Connect called — session={sessionCode}, jwt-len={jwt?.Length}, apiBase={apiBase}, appKey={appKey}");
         _sessionCode = sessionCode; _jwt = jwt;
         _cts = new CancellationTokenSource();
         _ = ConnectAsync();
@@ -107,6 +108,7 @@ public class RevbClient : MonoBehaviour
             var wsBase = apiBase.Replace("https://", "wss://").Replace("http://", "ws://");
             // Pusher-protocol endpoint as expected by Laravel Reverb
             var uri = new Uri($"{wsBase}/app/{appKey}?protocol=7&client=unity&version=1.0&flash=false");
+            Debug.Log($"[RevbClient] Attempting WebSocket connect to {uri}");
 
             _socket = new ClientWebSocket();
             await _socket.ConnectAsync(uri, _cts.Token);
