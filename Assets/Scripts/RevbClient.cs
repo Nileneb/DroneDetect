@@ -299,6 +299,8 @@ public class RevbClient : MonoBehaviour
         "wolf.moved", "drone.moved", "sheep.state", "sheep.caught",
         "scarer.activated", "wolf.panic", "wolf.joined", "drone.joined",
         "game.started", "game.ended",
+        // Matchmaking — fired by ShepherdMatchFound (broadcastAs "MatchFound")
+        "MatchFound",
     };
 
     [Serializable] class EventWrapper { public string e; public string d; }
