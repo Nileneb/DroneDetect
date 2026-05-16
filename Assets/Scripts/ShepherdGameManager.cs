@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Text;
+using Unity.MLAgents.Policies;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
@@ -199,10 +200,14 @@ public class ShepherdGameManager : MonoBehaviour
                     Quaternion.identity);
                 bot.IsLocal = false;
                 bot.enabled = false;
+                // WHY: SimpleAIBot drives the bot drone via NavMesh logic. The ML-Agents
+                // pipeline would fight it. Disable both the agent + sim controller.
                 var agent = bot.GetComponent<ShepherdDroneAgent>();
                 if (agent != null) agent.enabled = false;
                 var sdc = bot.GetComponent<SimulatedDroneController>();
                 if (sdc != null) sdc.enabled = false;
+                var bpBot = bot.GetComponent<BehaviorParameters>();
+                if (bpBot != null) bpBot.BehaviorType = BehaviorType.InferenceOnly;
                 botGo = bot.gameObject;
                 botGo.name = "AI_Drone";
             }
@@ -475,6 +480,12 @@ public class ShepherdGameManager : MonoBehaviour
         drone.IsLocal = true;
         if (drone.scarer != null)
             drone.scarer.SetPlayerId(_localPlayerId);
+
+        // WHY: prefab is configured with BehaviorType.Default + a trained DroneShepherd .onnx
+        // model. Default means "use the model if present" → the trained agent flies, not the
+        // human. Force HeuristicOnly on the LOCAL drone so Heuristic() reads keyboard input.
+        var bp = drone.GetComponent<BehaviorParameters>();
+        if (bp != null) bp.BehaviorType = BehaviorType.HeuristicOnly;
     }
 
     IEnumerator PostJson(string url, string json)
