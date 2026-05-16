@@ -53,11 +53,36 @@ public class MatchmakeManager : MonoBehaviour
     public void MatchmakeAsWolf()  => StartCoroutine(DoMatchmake("wolf"));
     public void MatchmakeAsDrone() => StartCoroutine(DoMatchmake("drone"));
 
+    /// <summary>
+    /// OFFLINE-Direkt-Start: Spiel sofort gegen AI ohne JWT/Login.
+    /// Default-Flow für Demo Day: Click Wolf/Drone → AI Bot for opposite side → play.
+    /// Skips all server calls + matchmake polling. No JWT required.
+    /// </summary>
+    public void PlayOfflineAsWolf()  => PlayOffline("wolf",  "drone");
+    public void PlayOfflineAsDrone() => PlayOffline("drone", "wolf");
+
+    void PlayOffline(string role, string aiOpponentRole)
+    {
+        Debug.Log($"[MatchmakeManager] OFFLINE start: role={role}, ai_opponent={aiOpponentRole}");
+        ShowWaiting("Starte gegen KI-Bot...");
+        // Direct handoff — no server, no JWT needed
+        PlayerPrefs.SetString("shepherd_session", "OFFLINE");
+        PlayerPrefs.SetString("shepherd_token",   "");
+        PlayerPrefs.SetString("shepherd_role",    role);
+        PlayerPrefs.SetInt   ("shepherd_host",    1);  // we control the round locally
+        PlayerPrefs.SetString("shepherd_api",     "");
+        PlayerPrefs.SetString("shepherd_ai_role", aiOpponentRole);
+        PlayerPrefs.Save();
+        SceneManager.LoadScene(playScene);
+    }
+
     IEnumerator DoMatchmake(string role)
     {
+        // No JWT? → go straight to offline AI play. User-friendly default for demo.
         if (string.IsNullOrEmpty(jwt))
         {
-            Debug.LogError("[MatchmakeManager] No JWT — set via Inspector or -token= CLI arg");
+            Debug.Log("[MatchmakeManager] No JWT → offline AI mode");
+            PlayOffline(role, role == "wolf" ? "drone" : "wolf");
             yield break;
         }
         ShowWaiting($"Matchmaking als {role}…");
