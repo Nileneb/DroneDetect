@@ -177,6 +177,13 @@ public class ShepherdGameManager : MonoBehaviour
         RecordEvent("catch_sheep");
         OnSheepCaughtEvent?.Invoke(s);
 
+        // Real-time broadcast so the drone-player sees the catch immediately (host-authoritative)
+        if (RevbClient.Instance != null && IsHost)
+        {
+            var json = $"{{\"sheep_id\":{s.SheepId},\"caught\":{_sheepCaught},\"remaining\":{ActiveSheep.Count}}}";
+            RevbClient.Instance.Send("sheep.caught", json);
+        }
+
         if (ActiveSheep.Count == 0) EndRound();
     }
 
@@ -259,9 +266,35 @@ public class ShepherdGameManager : MonoBehaviour
 
     void HandleEvent(string eventName, string json)
     {
-        if (eventName == "game.started" && !_running) StartRound();
-        if (eventName == "game.ended") EndRound();
+        switch (eventName)
+        {
+            case "game.started":
+                if (!_running) StartRound();
+                break;
+            case "game.ended":
+                EndRound();
+                break;
+            case "sheep.caught":
+                // Non-host sees a sheep caught — drop it from local ActiveSheep + visuals
+                if (IsHost) break;
+                var sc = JsonUtility.FromJson<SheepCaughtData>(json);
+                _sheepCaught = sc.caught;
+                if (sheep != null && sc.sheep_id >= 0 && sc.sheep_id < sheep.Length)
+                {
+                    var s = sheep[sc.sheep_id];
+                    if (s != null && !s.IsCaught)
+                    {
+                        ActiveSheep.Remove(s.transform);
+                        s.OnCaught();
+                        OnSheepCaughtEvent?.Invoke(s);
+                    }
+                }
+                break;
+        }
     }
+
+    [System.Serializable]
+    class SheepCaughtData { public int sheep_id; public int caught; public int remaining; }
 
     void SpawnLocalWolf()
     {
