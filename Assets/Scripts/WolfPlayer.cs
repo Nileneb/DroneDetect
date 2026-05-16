@@ -72,21 +72,39 @@ public class WolfPlayer : MonoBehaviour
 
     void HandleNetEvent(string eventName, string json)
     {
-        if (eventName != "wolf.moved") return;
-        var d = JsonUtility.FromJson<WolfMoveData>(json);
-        if (d.id == PlayerId) return;
-
-        if (!_remoteWolves.TryGetValue(d.id, out var t))
+        switch (eventName)
         {
-            var go = _gm != null
-                ? Instantiate(_gm.remoteWolfPrefab)
-                : new GameObject($"RemoteWolf_{d.id}");
-            t = go.transform;
-            _remoteWolves[d.id] = t;
-        }
+            case "wolf.moved":
+            {
+                var d = JsonUtility.FromJson<WolfMoveData>(json);
+                if (d.id == PlayerId) return;
+                if (!_remoteWolves.TryGetValue(d.id, out var t))
+                {
+                    var go = _gm != null
+                        ? Instantiate(_gm.remoteWolfPrefab)
+                        : new GameObject($"RemoteWolf_{d.id}");
+                    t = go.transform;
+                    _remoteWolves[d.id] = t;
+                }
+                t.position = Vector3.Lerp(t.position, new Vector3(d.x, d.y, d.z), 0.3f);
+                t.rotation = Quaternion.Lerp(t.rotation, Quaternion.Euler(0, d.r, 0), 0.3f);
+                break;
+            }
 
-        t.position = Vector3.Lerp(t.position, new Vector3(d.x, d.y, d.z), 0.3f);
-        t.rotation = Quaternion.Lerp(t.rotation, Quaternion.Euler(0, d.r, 0), 0.3f);
+            case "scarer.activated":
+            {
+                // Remote drone fired its scarer near our wolf — apply fear + push
+                if (!IsLocal) return;
+                var s = JsonUtility.FromJson<ScarerEventData>(json);
+                if (_fear != null)
+                {
+                    // Scale fear gain by how close we already were (the drone broadcasts
+                    // its radius; if the wolf is beyond it, the pulse missed us)
+                    _fear.AddFear(s.duration * 0.4f);   // ramp toward panic over duration
+                }
+                break;
+            }
+        }
     }
 
     public void PushAway(Vector3 from, float force)
@@ -104,4 +122,7 @@ public class WolfPlayer : MonoBehaviour
 
     [System.Serializable]
     struct WolfMoveData { public int id; public float x, y, z, r; }
+
+    [System.Serializable]
+    struct ScarerEventData { public int id; public float radius; public float duration; }
 }
