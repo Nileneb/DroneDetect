@@ -94,7 +94,7 @@ public class ShepherdGameManager : MonoBehaviour
         IsHost = isHostParam;
         Debug.Log($"[ShepherdGM] params session={_sessionCode}, jwt-len={_jwt?.Length}, role={_localRole}, host={IsHost}");
 
-        if (string.IsNullOrEmpty(_sessionCode) || string.IsNullOrEmpty(_jwt))
+        if (string.IsNullOrEmpty(_sessionCode))
         {
 #if UNITY_EDITOR
             _sessionCode = "EDITOR";
@@ -102,8 +102,13 @@ public class ShepherdGameManager : MonoBehaviour
             _localRole = editorRole;
             IsHost = true;
 #else
-            Debug.LogError("[ShepherdGM] Missing session/token URL params");
-            return;
+            // Offline fallback: no session means "single-player vs AI" — JWT optional
+            _sessionCode = "OFFLINE";
+            _jwt = "";
+            if (string.IsNullOrEmpty(_localRole)) _localRole = "drone";
+            if (string.IsNullOrEmpty(_aiRole))    _aiRole    = _localRole == "wolf" ? "drone" : "wolf";
+            IsHost = true;
+            Debug.Log("[ShepherdGM] No session — offline AI mode, role=" + _localRole + ", ai_role=" + _aiRole);
 #endif
         }
 
