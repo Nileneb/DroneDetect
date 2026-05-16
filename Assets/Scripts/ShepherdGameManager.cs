@@ -77,6 +77,7 @@ public class ShepherdGameManager : MonoBehaviour
 
     void Start()
     {
+        Debug.Log("[ShepherdGM] Start() invoked");
         foreach (var s in sheep) ActiveSheep.Add(s.transform);
         InitialSheepCount = sheep != null ? sheep.Length : 0;
 
@@ -86,6 +87,7 @@ public class ShepherdGameManager : MonoBehaviour
         _localRole = GetUrlParam("role");
         bool isHostParam = GetUrlParam("host") == "1";
         IsHost = isHostParam;
+        Debug.Log($"[ShepherdGM] params session={_sessionCode}, jwt-len={_jwt?.Length}, role={_localRole}, host={IsHost}");
 
         if (string.IsNullOrEmpty(_sessionCode) || string.IsNullOrEmpty(_jwt))
         {
@@ -117,10 +119,15 @@ public class ShepherdGameManager : MonoBehaviour
             sheep[i].gameObject.SetActive(true);
         }
 
+        Debug.Log($"[ShepherdGM] RevbClient.Instance={(RevbClient.Instance != null ? "OK" : "NULL")}");
         if (RevbClient.Instance != null)
         {
             RevbClient.Instance.OnEvent += HandleEvent;
             RevbClient.Instance.Connect(_sessionCode, _jwt);
+        }
+        else
+        {
+            Debug.LogError("[ShepherdGM] RevbClient.Instance is null — multiplayer disabled. No NetworkManager GameObject in scene?");
         }
 
         if (_localRole == "wolf")
