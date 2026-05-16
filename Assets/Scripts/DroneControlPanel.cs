@@ -129,6 +129,12 @@ public class DroneControlPanel : MonoBehaviour
                 break;
         }
 
+        // UX: hide the button that triggered the now-active mode — clicking it again is a no-op,
+        // user can still switch back via the OTHER (still-visible) button. Falls back to "both
+        // visible" if user lands in Play after AIFly missing-model rollback (handled above).
+        if (btnPlay != null) btnPlay.gameObject.SetActive(_mode != DroneMode.Play);
+        if (btnAI   != null) btnAI.gameObject.SetActive(_mode != DroneMode.AIFly);
+
         Debug.Log($"[DroneControlPanel] {mode} | bp={bp != null} model={bp?.Model != null} dr={dr?.Record}");
     }
 
