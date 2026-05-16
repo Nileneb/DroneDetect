@@ -6,10 +6,13 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/Agent1.unity
-    guid: bc31a2dbf5c8a7af9a83dc910121cd49
+    path: Assets/Scenes/MainMenu.unity
+    guid: 1e5118505f768800bbc2916242e0260b
   - enabled: 1
     path: Assets/Scenes/ShepherdArena.unity
     guid: 11764befe55ad2784bce03c018e9d904
+  - enabled: 1
+    path: Assets/Scenes/Agent1.unity
+    guid: bc31a2dbf5c8a7af9a83dc910121cd49
   m_configObjects:
     com.unity.dt.app-ui: {fileID: 11400000, guid: 1b1c20d82303e4b5781c3ef50ac1449f, type: 2}

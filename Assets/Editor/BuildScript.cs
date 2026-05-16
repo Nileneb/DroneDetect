@@ -21,7 +21,10 @@ public static class BuildScript
 
         var options = new BuildPlayerOptions
         {
-            scenes = new[] { "Assets/Scenes/ShepherdArena.unity" },
+            scenes = new[] {
+                "Assets/Scenes/MainMenu.unity",       // start screen with role select
+                "Assets/Scenes/ShepherdArena.unity",  // play scene
+            },
             locationPathName = outputPath,
             target = BuildTarget.StandaloneLinux64,
             options = BuildOptions.None,
@@ -45,7 +48,10 @@ public static class BuildScript
 
         var options = new BuildPlayerOptions
         {
-            scenes = new[] { "Assets/Scenes/ShepherdArena.unity" },
+            scenes = new[] {
+                "Assets/Scenes/MainMenu.unity",       // start screen with role select
+                "Assets/Scenes/ShepherdArena.unity",  // play scene
+            },
             locationPathName = DeployRootWebGL,
             target = BuildTarget.WebGL,
             options = BuildOptions.None,
@@ -70,7 +76,10 @@ public static class BuildScript
         var outputPath = Path.Combine(Application.dataPath, "../Build/WebGL/ShepherdArena");
         var options = new BuildPlayerOptions
         {
-            scenes = new[] { "Assets/Scenes/ShepherdArena.unity" },
+            scenes = new[] {
+                "Assets/Scenes/MainMenu.unity",       // start screen with role select
+                "Assets/Scenes/ShepherdArena.unity",  // play scene
+            },
             locationPathName = outputPath,
             target = BuildTarget.WebGL,
             options = BuildOptions.None,
