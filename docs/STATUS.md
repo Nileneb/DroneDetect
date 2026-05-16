@@ -1,6 +1,23 @@
 # DroneDetect — Status & Quickstart
 
-Single-page Übersicht über alle Komponenten der ML-Agents → WebGL-Deploy Pipeline.
+Single-page Übersicht über alle Komponenten der ML-Agents → Standalone-Multiplayer Pipeline.
+
+## Architektur-Pivot 2026-05-16
+
+**Verworfen**: WebGL-Build-Deploy auf app.linn.games. Grund: Unity 6 alpha + URP + IL2CPP-WebGL
+hängt bei "Compiling shader variants — Universal Render Pipeline/Lit" bei ~72 GB Variant-Output
+selbst nach aggressivem Stripping. 3× Build-Versuche je 1-4h ohne Erfolg. Bug auch in Unity 6 LTS
+6000.0.x reproduzierbar (laut User-Test).
+
+**Neu**: Standalone-Clients (Linux/Win/Mac) + zentrale Koordination via app.linn.games. Server
+trägt nur:
+- JWT-Auth (Sanctum)
+- Session-Lifecycle (create/join/start/end)
+- Event-Recording (4Hz Position-Tracks)
+- **NEU**: Demo-File-Upload (.demo Files für GAIL-Training)
+
+Kein Docker Swarm nötig, keine GPU auf u-server. Training auf BigOne (RTX 4090) oder auf
+User-Laptop (8 GB VGPU, 32 GB RAM → reicht für 1M-Step PPO).
 
 ## Komponenten
 
@@ -11,14 +28,16 @@ Single-page Übersicht über alle Komponenten der ML-Agents → WebGL-Deploy Pip
 | Phase 4 Reward-Shaping | ✅ implementiert | `Assets/Scripts/ShepherdDroneAgent.cs` |
 | Unity Compile Fix | ✅ `GetInstanceID → GetEntityId().GetHashCode()` | `Library/PackageCache/com.unity.ml-agents@.../Match3ActuatorComponent.cs` |
 | Polyart-Bloat-Removal | ✅ raus (878 MB) — ohne 72 GB Shader-Reimport | `_unused_assets/Polyart/` |
-| WebGL Build-Skript | ✅ Editor-Menü + batchmode | `Assets/Editor/BuildScript.cs`, `tools/build-webgl-batch.sh` |
-| WebGL Deploy-Pfad | ✅ direkt nach `app.linn.games/public/shepherd/Build/` | siehe `deploy/swarm/shepherd-stack.yml` |
-| Shepherd Blade Routes | ✅ vorhanden in app.linn.games | `Route::get('shepherd/play', ...)` |
+| Standalone Build-Skript | ✅ Editor-Menü `Build > Linux Standalone ShepherdArena (Deploy)` | `Assets/Editor/BuildScript.cs` |
+| WebGL Build | ⚠ broken in Unity 6 alpha + LTS | siehe Architektur-Pivot oben |
+| Demo-Upload API (app.linn.games) | ✅ `POST /api/shepherd/demos/upload` (JWT) | `ShepherdController::uploadDemo`, branch `feature/shepherd-demo-upload` |
+| Demo-Upload Unity Client | ✅ `DemoUploader.cs` hängt sich an `OnRoundEnded` | `Assets/Scripts/DemoUploader.cs` |
+| Demo-Sync für Training | ✅ JWT-pull aller demos vor Trainingsstart | `tools/sync-demos-from-server.sh` |
+| Shepherd Download Page | ✅ ZIP-Download statt WebGL-Embed | `views/shepherd/download.blade.php`, route `/shepherd/download` |
 | Präsentation | ✅ Reveal.js-Slides + echte TB-Daten | `docs/presentation/index.html` |
 | Demo Script | ✅ | `docs/presentation/demo-script.md` |
 | Training Methodology Doc | ✅ | `docs/presentation/training-methodology.md` |
-| Docker Swarm Setup-Docs | ✅ | `deploy/swarm/INIT.md`, `deploy/swarm/shepherd-stack.yml` |
-| Docker Swarm Initialisierung | ⧗ erfordert User-SSH-Zugang | `docker swarm init` auf BigOne + Worker-Join auf u-server |
+| Docker Swarm Setup-Docs | ⚠ obsolet (kein GPU auf u-server nötig durch Pivot) | siehe `deploy/swarm/INIT.md` — Architektur-Pivot oben |
 
 ## Quickstart-Befehle
 
