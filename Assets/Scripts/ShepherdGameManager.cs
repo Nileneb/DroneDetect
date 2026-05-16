@@ -221,10 +221,13 @@ public class ShepherdGameManager : MonoBehaviour
         StartCoroutine(RoundTimer());
         StartCoroutine(BatchUpload());
 #if !UNITY_EDITOR
-        if (RevbClient.Instance != null && IsHost)
+        // Skip server-side round-start in offline mode (no JWT, no session on server → 401 spam)
+        if (RevbClient.Instance != null && IsHost && !IsOfflineMode())
             StartCoroutine(PostJson($"{apiBase}/sessions/{_sessionCode}/start", "{}"));
 #endif
     }
+
+    bool IsOfflineMode() => string.IsNullOrEmpty(_jwt) || _sessionCode == "OFFLINE";
 
     IEnumerator RoundTimer()
     {
@@ -300,6 +303,7 @@ public class ShepherdGameManager : MonoBehaviour
         while (_running)
         {
             yield return new WaitForSeconds(2f);
+            if (IsOfflineMode()) { _pendingEvents.Clear(); continue; }
 #if UNITY_EDITOR
             _pendingEvents.Clear();
             continue;
@@ -334,6 +338,7 @@ public class ShepherdGameManager : MonoBehaviour
 
     IEnumerator PostEnd()
     {
+        if (IsOfflineMode()) { _pendingEvents.Clear(); yield break; }
 #if !UNITY_EDITOR
         if (_pendingEvents.Count > 0)
         {
