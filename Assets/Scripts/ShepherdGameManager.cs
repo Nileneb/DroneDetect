@@ -435,9 +435,12 @@ public class ShepherdGameManager : MonoBehaviour
         }
     }
 
-    // WHY: scene-sheep have stale NavMeshAgent + occasionally collapse to origin. Hard-fix:
-    // destroy any NavMeshAgent, ensure SheepNPC is enabled, and re-spread sheep that ended up
-    // bunched at origin so user sees them grazing across the arena.
+    // WHY: scene-sheep are parented under a "Sheep" group GameObject (parent at origin) AND
+    // carry stale NavMeshAgent + Animator-with-rootMotion. The parent transform plus root-motion
+    // override our transform.position writes — sheep visually snap toward the parent (0,0,0).
+    // Fix: unparent (so transform.position writes are absolute world-space), destroy NavMeshAgent,
+    // disable Animator-rootMotion, freeze Rigidbody to non-kinematic-but-no-gravity, re-spread
+    // clumped positions onto a ring.
     void RepairSheep()
     {
         var all = FindObjectsByType<SheepNPC>(FindObjectsSortMode.None);
@@ -445,21 +448,41 @@ public class ShepherdGameManager : MonoBehaviour
         {
             var s = all[i];
             if (s == null) continue;
+
+            // Detach from any parent — transform.position writes are world-space but a parent
+            // with Animator/Constraint/Script can still override per-frame.
+            if (s.transform.parent != null)
+                s.transform.SetParent(null, true);
+
             var nav = s.GetComponent<UnityEngine.AI.NavMeshAgent>();
             if (nav != null) Destroy(nav);
-            s.enabled = true;
-            // Disable any AI component we don't recognise (defensive — old WolfFear-style hooks)
-            var anim = s.GetComponent<Animator>();
-            if (anim != null) anim.applyRootMotion = false;
-            // Reseed clumped positions
-            if (s.transform.position.sqrMagnitude < 1f)
+
+            // Kill root-motion so the Animator doesn't yank position back
+            foreach (var anim in s.GetComponentsInChildren<Animator>(true))
             {
-                var ang = UnityEngine.Random.Range(0f, Mathf.PI * 2f);
-                var r = UnityEngine.Random.Range(8f, 20f);
-                s.transform.position = new Vector3(Mathf.Cos(ang) * r, s.transform.position.y, Mathf.Sin(ang) * r);
+                anim.applyRootMotion = false;
             }
+
+            // Rigidbody: lock to ground plane, no rotation jitter, no gravity-pull-to-zero
+            var rb = s.GetComponent<Rigidbody>();
+            if (rb != null)
+            {
+                rb.useGravity = false;
+                rb.linearVelocity = Vector3.zero;
+                rb.angularVelocity = Vector3.zero;
+                rb.constraints = RigidbodyConstraints.FreezeRotation | RigidbodyConstraints.FreezePositionY;
+            }
+
+            s.enabled = true;
+
+            // Spread sheep onto a ring so they aren't bunched at parent's origin
+            var ang = (Mathf.PI * 2f) * (i / (float)Mathf.Max(1, all.Length)) + UnityEngine.Random.Range(0f, 0.6f);
+            var r   = UnityEngine.Random.Range(10f, 18f);
+            var pos = s.transform.position;
+            // Always reseed — the parent-snap already moved them home
+            s.transform.position = new Vector3(Mathf.Cos(ang) * r, pos.y, Mathf.Sin(ang) * r);
         }
-        Debug.Log($"[ShepherdGM] RepairSheep: cleaned {all.Length} sheep");
+        Debug.Log($"[ShepherdGM] RepairSheep: detached + spread {all.Length} sheep");
     }
 
     void SpawnLocalWolf()
