@@ -37,7 +37,11 @@ public class WolfFear : MonoBehaviour
 
     public void AddFear(float rate)
     {
-        if (IsPanicking || !_wolf.IsLocal) return;
+        // WHY: dropped the !_wolf.IsLocal guard. In offline mode the wolf is
+        // an AI bot (IsLocal=false), so the guard suppressed all fear and the
+        // mechanic appeared broken. AI wolves still need to react to the
+        // drone's scarer so the demo feels alive.
+        if (IsPanicking) return;
         Fear = Mathf.Clamp01(Fear + rate * Time.deltaTime);
         if (Fear >= 1f) TriggerPanic();
     }

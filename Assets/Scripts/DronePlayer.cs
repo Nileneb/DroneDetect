@@ -10,6 +10,15 @@ public class DronePlayer : MonoBehaviour
     [Header("Components")]
     public DroneScarer scarer;
 
+    [Header("Health")]
+    [Tooltip("Hits from the wolf before the drone goes down. -1 = invulnerable.")]
+    public int maxHealth = 3;
+    [Tooltip("Seconds of i-frames after each hit so one swipe doesn't drain HP.")]
+    public float invulnAfterHit = 1.0f;
+
+    public int Health { get; private set; }
+    float _lastHitTime = -999f;
+
     public int PlayerId { get; set; }
     public bool IsLocal { get; set; }
 
@@ -20,6 +29,7 @@ public class DronePlayer : MonoBehaviour
     void Awake()
     {
         _sdc = GetComponent<SimulatedDroneController>();
+        Health = maxHealth;
     }
 
     void Start()
@@ -108,6 +118,47 @@ public class DronePlayer : MonoBehaviour
     {
         if (RevbClient.Instance != null)
             RevbClient.Instance.OnEvent -= HandleNetEvent;
+    }
+
+    // ── Damage from wolf collision ────────────────────────────────────────
+
+    void OnCollisionEnter(Collision c) => TryTakeDamageFrom(c.collider);
+    void OnTriggerEnter(Collider c)    => TryTakeDamageFrom(c);
+
+    void TryTakeDamageFrom(Collider other)
+    {
+        if (!IsLocal || other == null) return;
+        if (maxHealth < 0) return;                                 // invulnerable
+        if (Time.time - _lastHitTime < invulnAfterHit) return;     // i-frames
+
+        var wolf = other.GetComponentInParent<WolfPlayer>();
+        if (wolf == null) return;
+
+        _lastHitTime = Time.time;
+        Health = Mathf.Max(0, Health - 1);
+
+        var hud = FindFirstObjectByType<DroneHUD>() ?? FindFirstObjectByType<ShepherdHUD>() as MonoBehaviour;
+        if (hud != null)
+        {
+            // Try DroneHUD.ShowMessage first; both HUDs expose it.
+            var droneHud = hud as DroneHUD;
+            if (droneHud != null) droneHud.ShowMessage($"Treffer! HP {Health}/{maxHealth}", 2f);
+        }
+
+        Debug.Log($"[DronePlayer] Hit by wolf — HP={Health}/{maxHealth}");
+
+        if (Health <= 0)
+        {
+            Debug.Log("[DronePlayer] Drone destroyed — landing");
+            if (_sdc != null) _sdc.Land();
+            // Round-end signal: tell ShepherdGameManager all sheep effectively lost
+            // (the wolf 'won' by taking out the protector). Simpler: just end round.
+            var gm = FindFirstObjectByType<ShepherdGameManager>();
+            // Defer to GM via reflection-free path: it has no public EndRound,
+            // but OnSheepCaught for every active sheep would end the round.
+            // Cleaner: just stop player input here; round timer expiry handles end.
+            enabled = false;
+        }
     }
 
     [System.Serializable]
