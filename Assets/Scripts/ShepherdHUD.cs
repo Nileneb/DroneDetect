@@ -114,7 +114,18 @@ public class ShepherdHUD : MonoBehaviour
     public void ShowEndScreen(int sheepSaved, int sheepCaught, float duration)
     {
         if (endScreen != null) endScreen.SetActive(true);
-        if (resultTitleText != null) resultTitleText.text = "Runde beendet!";
+
+        var gm = FindFirstObjectByType<ShepherdGameManager>();
+        bool droneDestroyed = gm != null && gm.DroneWasDestroyed;
+        bool wolfWiped = sheepSaved == 0;
+
+        string title = droneDestroyed
+            ? "Drohne zerstört – Wolf gewinnt!"
+            : wolfWiped
+                ? "Alle Schafe gefangen – Wolf gewinnt!"
+                : "Runde beendet";
+
+        if (resultTitleText != null) resultTitleText.text = title;
         if (resultBodyText != null)
             resultBodyText.text = $"Schafe gerettet: {sheepSaved}\nSchafe gefangen: {sheepCaught}\nDauer: {Mathf.FloorToInt(duration / 60)}:{Mathf.FloorToInt(duration % 60):00}";
     }

@@ -50,6 +50,7 @@ public class ShepherdGameManager : MonoBehaviour
     public int InitialSheepCount { get; private set; }
     public float RoundDuration => roundDuration;
     public bool IsRoundActive => _running;
+    public bool DroneWasDestroyed { get; private set; }
 
     public System.Action<int, int, float> OnRoundEnded;
     public System.Action<SheepNPC> OnSheepCaughtEvent;
@@ -357,6 +358,15 @@ public class ShepherdGameManager : MonoBehaviour
         }
 
         if (ActiveSheep.Count == 0) EndRound();
+    }
+
+    public void OnDroneDestroyed()
+    {
+        if (!_running || DroneWasDestroyed) return;
+        DroneWasDestroyed = true;
+        var hud = FindFirstObjectByType<DroneHUD>();
+        if (hud != null) hud.ShowMessage("Drohne zerstört! Wolf gewinnt.", 4f);
+        EndRound();
     }
 
     public void RecordEvent(string action)

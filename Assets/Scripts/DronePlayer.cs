@@ -151,12 +151,7 @@ public class DronePlayer : MonoBehaviour
         {
             Debug.Log("[DronePlayer] Drone destroyed — landing");
             if (_sdc != null) _sdc.Land();
-            // Round-end signal: tell ShepherdGameManager all sheep effectively lost
-            // (the wolf 'won' by taking out the protector). Simpler: just end round.
-            var gm = FindFirstObjectByType<ShepherdGameManager>();
-            // Defer to GM via reflection-free path: it has no public EndRound,
-            // but OnSheepCaught for every active sheep would end the round.
-            // Cleaner: just stop player input here; round timer expiry handles end.
+            if (_gm != null) _gm.OnDroneDestroyed();
             enabled = false;
         }
     }
