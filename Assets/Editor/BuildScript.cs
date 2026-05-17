@@ -16,6 +16,17 @@ public static class BuildScript
         "Assets/Scenes/ShepherdArena.unity",
     };
 
+    // Convenience: rebuild ALL standalone targets in one click. WHY: vor jeder
+    // Demo-Übergabe will man garantiert die identische Codebase auf Linux/Win/Mac
+    // — ein Klick statt drei Menü-Klicks.
+    [MenuItem("Build/ALL Standalone (Linux + Windows + macOS)")]
+    public static void BuildAllStandalone()
+    {
+        BuildLinuxStandaloneDeploy();
+        BuildWindowsStandaloneLocal();
+        BuildMacStandaloneLocal();
+    }
+
     [MenuItem("Build/Linux Standalone ShepherdArena (Deploy)")]
     public static void BuildLinuxStandaloneDeploy()
     {
