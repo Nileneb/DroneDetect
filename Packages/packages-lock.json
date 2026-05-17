@@ -1,5 +1,24 @@
 {
   "dependencies": {
+    "com.cdm.authentication": {
+      "version": "https://github.com/cdmvision/authentication-unity.git#1.2.0",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.nuget.newtonsoft-json": "2.0.2"
+      },
+      "hash": "0ec72dcc626137ca03935c53144661710bda5b62"
+    },
+    "com.coplaydev.unity-mcp": {
+      "version": "https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity#main",
+      "depth": 0,
+      "source": "git",
+      "dependencies": {
+        "com.unity.nuget.newtonsoft-json": "3.0.2",
+        "com.unity.test-framework": "1.1.31"
+      },
+      "hash": "b92c05a25820cfc9f59ce4094eb46aaec8632ea2"
+    },
     "com.unity.2d.sprite": {
       "version": "1.0.0",
       "depth": 1,
