@@ -95,3 +95,8 @@ InitTestScene*.unity*
 
 # Editor session cache (Claude Code agent CLI state — not project)
 .claude/
+
+# Training run output — huge .pt checkpoints, regeneratable from training.
+# Excluded since 2026-05-17 to stop gitingest from timing out on clone.
+results/
+
