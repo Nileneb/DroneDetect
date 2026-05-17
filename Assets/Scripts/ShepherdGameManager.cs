@@ -274,13 +274,40 @@ public class ShepherdGameManager : MonoBehaviour
     public void StartRound()
     {
         _running = true;
+        _lastOpponentEventTime = Time.unscaledTime;
         StartCoroutine(RoundTimer());
         StartCoroutine(BatchUpload());
+        // Phase 5: spawn AI bot for the opposite role if no events arrive for OpponentTimeoutSeconds.
+        // Skipped if offline (we already have whichever side we chose), or if matchmaking already
+        // placed an AI bot (_aiRole set), or if there's no opponent to wait for (single-seat session).
+        if (!IsOfflineMode() && string.IsNullOrEmpty(_aiRole))
+            StartCoroutine(HeartbeatMonitor());
 #if !UNITY_EDITOR
         // Skip server-side round-start in offline mode (no JWT, no session on server → 401 spam)
         if (RevbClient.Instance != null && IsHost && !IsOfflineMode())
             StartCoroutine(PostJson($"{apiBase}/sessions/{_sessionCode}/start", "{}"));
 #endif
+    }
+
+    IEnumerator HeartbeatMonitor()
+    {
+        var check = new WaitForSecondsRealtime(2f);
+        while (_running)
+        {
+            yield return check;
+            if (_aiTakeoverTriggered || !_running) yield break;
+            float silent = Time.unscaledTime - _lastOpponentEventTime;
+            if (silent < OpponentTimeoutSeconds) continue;
+
+            var opponentRole = _localRole == "wolf" ? "drone" : "wolf";
+            Debug.LogWarning($"[ShepherdGM] Opponent silent for {silent:0.0}s → AI takeover as {opponentRole}");
+            _aiTakeoverTriggered = true;
+            _aiRole = opponentRole;
+            SpawnAiBot(opponentRole);
+            var hud = FindFirstObjectByType<DroneHUD>();
+            if (hud != null) hud.ShowMessage($"Gegner disconnected — AI ({opponentRole}) übernimmt", 6f);
+            yield break;
+        }
     }
 
     bool IsOfflineMode() => string.IsNullOrEmpty(_jwt) || _sessionCode == "OFFLINE";
@@ -411,6 +438,14 @@ public class ShepherdGameManager : MonoBehaviour
 #endif
     }
 
+    // Phase 5: heartbeat tracking for AI-takeover on opponent disconnect.
+    // Opponent role = the OPPOSITE of _localRole. Their wolf.moved or drone.moved
+    // events touch _lastOpponentEventTime; HeartbeatMonitor coroutine triggers
+    // an AI bot for the silent role after OpponentTimeoutSeconds of silence.
+    float _lastOpponentEventTime;
+    bool  _aiTakeoverTriggered;
+    const float OpponentTimeoutSeconds = 10f;
+
     void HandleEvent(string eventName, string json)
     {
         switch (eventName)
@@ -420,6 +455,17 @@ public class ShepherdGameManager : MonoBehaviour
                 break;
             case "game.ended":
                 EndRound();
+                break;
+            case "wolf.moved":
+                if (_localRole != "wolf") _lastOpponentEventTime = Time.unscaledTime;
+                break;
+            case "drone.moved":
+                if (_localRole != "drone") _lastOpponentEventTime = Time.unscaledTime;
+                break;
+            case "connection.lost":
+                Debug.LogWarning("[ShepherdGM] WebSocket connection.lost — relying on offline-AI fallback if opponent stays silent");
+                var hud0 = FindFirstObjectByType<DroneHUD>();
+                if (hud0 != null) hud0.ShowMessage("Verbindung verloren — versuche AI-Übernahme bei Stille", 5f);
                 break;
             case "sheep.caught":
                 // Non-host sees a sheep caught — drop it from local ActiveSheep + visuals

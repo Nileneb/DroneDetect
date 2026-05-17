@@ -92,6 +92,10 @@ public class RevbClient : MonoBehaviour
     string _socketId;                               // received from pusher:connection_established
     readonly ConcurrentQueue<(string evt, string data)> _eventQueue = new();
     bool _subscribed;
+    bool _reconnecting;
+    // Exponential backoff schedule for reconnect attempts. Bounded so we don't
+    // hammer the server forever — final failure surfaces via OnEvent("connection.lost").
+    static readonly int[] ReconnectDelaysMs = { 1000, 2000, 4000, 8000, 15000 };
 
     public void Connect(string sessionCode, string jwt)
     {
@@ -128,24 +132,77 @@ public class RevbClient : MonoBehaviour
         var buf = new byte[8192];
         var ms = new System.IO.MemoryStream();
 
-        while (_socket != null && _socket.State == WebSocketState.Open && !_cts.IsCancellationRequested)
+        try
         {
-            ms.SetLength(0);
-            WebSocketReceiveResult res;
-            do
+            while (_socket != null && _socket.State == WebSocketState.Open && !_cts.IsCancellationRequested)
             {
-                try { res = await _socket.ReceiveAsync(new ArraySegment<byte>(buf), _cts.Token); }
+                ms.SetLength(0);
+                WebSocketReceiveResult res;
+                do
+                {
+                    try { res = await _socket.ReceiveAsync(new ArraySegment<byte>(buf), _cts.Token); }
+                    catch (Exception ex)
+                    {
+                        Debug.LogWarning($"[RevbClient] Receive error: {ex.Message}");
+                        return;
+                    }
+                    if (res.MessageType == WebSocketMessageType.Close) return;
+                    ms.Write(buf, 0, res.Count);
+                } while (!res.EndOfMessage);
+
+                var msg = Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
+                HandleMessage(msg);
+            }
+        }
+        finally
+        {
+            // Drop without an explicit Disconnect() → try to reconnect with backoff.
+            // Don't enqueue an event from the background thread; the next reconnect
+            // attempt's pusher:connection_established will re-subscribe.
+            if (!_cts.IsCancellationRequested && !_reconnecting)
+                _ = ReconnectWithBackoffAsync();
+        }
+    }
+
+    async Task ReconnectWithBackoffAsync()
+    {
+        if (_reconnecting) return;
+        _reconnecting = true;
+        try
+        {
+            _subscribed = false;
+            _socketId = null;
+            try { _socket?.Dispose(); } catch { }
+            _socket = null;
+
+            for (int i = 0; i < ReconnectDelaysMs.Length; i++)
+            {
+                if (_cts.IsCancellationRequested) return;
+                Debug.Log($"[RevbClient] Reconnect attempt {i + 1}/{ReconnectDelaysMs.Length} in {ReconnectDelaysMs[i]/1000.0:0.0}s");
+                try { await Task.Delay(ReconnectDelaysMs[i], _cts.Token); }
+                catch (OperationCanceledException) { return; }
+
+                try
+                {
+                    await ConnectAsync();
+                    if (_socket != null && _socket.State == WebSocketState.Open)
+                    {
+                        Debug.Log("[RevbClient] Reconnected successfully");
+                        return;
+                    }
+                }
                 catch (Exception ex)
                 {
-                    Debug.LogWarning($"[RevbClient] Receive error: {ex.Message}");
-                    return;
+                    Debug.LogWarning($"[RevbClient] Reconnect attempt {i + 1} failed: {ex.Message}");
                 }
-                if (res.MessageType == WebSocketMessageType.Close) return;
-                ms.Write(buf, 0, res.Count);
-            } while (!res.EndOfMessage);
-
-            var msg = Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length);
-            HandleMessage(msg);
+            }
+            // All attempts exhausted — surface to listeners (main-thread dispatched via Update queue).
+            Debug.LogError("[RevbClient] Reconnect failed after exhausting backoff schedule");
+            _eventQueue.Enqueue(("connection.lost", "{}"));
+        }
+        finally
+        {
+            _reconnecting = false;
         }
     }
 
