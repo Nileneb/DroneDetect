@@ -56,6 +56,10 @@ public class LoginScreen : MonoBehaviour
     IEnumerator Start()
     {
         BuildUI();
+        // Hide MatchmakeManager's role-select UI until login finishes — otherwise
+        // both panels are visible simultaneously and the user can click "Wolf" /
+        // "Drone" before authenticating.
+        ToggleMatchmakeUI(false);
 
         // CLI override — same convention as MatchmakeManager
         var cliApi = GetArg("api");
@@ -69,6 +73,13 @@ public class LoginScreen : MonoBehaviour
             yield break;
         }
         ShowPanel();
+    }
+
+    void ToggleMatchmakeUI(bool on)
+    {
+        if (matchmake == null) return;
+        if (matchmake.roleSelectPanel != null) matchmake.roleSelectPanel.SetActive(on);
+        if (matchmake.waitingPanel    != null && !on) matchmake.waitingPanel.SetActive(false);
     }
 
     IEnumerator VerifyToken(string token)
@@ -211,6 +222,8 @@ public class LoginScreen : MonoBehaviour
         if (matchmake == null) return;
         matchmake.jwt = token;
         matchmake.apiBase = apiBase;
+        // Reveal role-select now that auth is settled (or offline-mode chosen).
+        ToggleMatchmakeUI(true);
     }
 
     // ── UI build (programmatic, no scene-asset dependency) ─────────────────
