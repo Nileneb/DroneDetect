@@ -55,6 +55,7 @@ public class LoginScreen : MonoBehaviour
 
     IEnumerator Start()
     {
+        Debug.Log("[LoginScreen] Start invoked — MainMenu scene is active, OAuth panel will appear");
         BuildUI();
         // Hide MatchmakeManager's role-select UI until login finishes — otherwise
         // both panels are visible simultaneously and the user can click "Wolf" /
