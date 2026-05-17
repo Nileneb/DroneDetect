@@ -46,16 +46,16 @@ public class ShepherdDroneAgent : Agent
     {
         _sdc = GetComponent<SimulatedDroneController>();
         _rb  = GetComponent<Rigidbody>();
-        _gm  = FindFirstObjectByType<ShepherdGameManager>();
+        _gm  = FindAnyObjectByType<ShepherdGameManager>();
         SubscribeToGameManager();
     }
 
-    void OnEnable()  => SubscribeToGameManager();
-    void OnDisable() => UnsubscribeFromGameManager();
+    protected override void OnEnable()  { base.OnEnable();  SubscribeToGameManager(); }
+    protected override void OnDisable() { base.OnDisable(); UnsubscribeFromGameManager(); }
 
     void SubscribeToGameManager()
     {
-        if (_gm == null) _gm = FindFirstObjectByType<ShepherdGameManager>();
+        if (_gm == null) _gm = FindAnyObjectByType<ShepherdGameManager>();
         if (_gm == null) return;
         _gm.OnSheepCaughtEvent += HandleSheepCaught;
         _gm.OnRoundEnded       += HandleRoundEnded;
@@ -115,7 +115,7 @@ public class ShepherdDroneAgent : Agent
         // Rule-based scarer: activate when wolf is close enough
         if (scarer != null && scarer.IsReady)
         {
-            var wolf = FindFirstObjectByType<WolfPlayer>();
+            var wolf = FindAnyObjectByType<WolfPlayer>();
             if (wolf != null && Vector3.Distance(transform.position, wolf.transform.position) < scarerAutoRadius)
             {
                 scarer.Activate();
@@ -149,7 +149,7 @@ public class ShepherdDroneAgent : Agent
         }
 
         // Primary target: nearest wolf
-        var wolfGo = FindFirstObjectByType<WolfPlayer>();
+        var wolfGo = FindAnyObjectByType<WolfPlayer>();
         if (wolfGo != null)
         {
             var dir   = wolfGo.transform.position - transform.position;
@@ -172,7 +172,7 @@ public class ShepherdDroneAgent : Agent
         AddReward(perSheepAliveBonus * _gm.ActiveSheep.Count);
 
         // Fear-based reward — track current wolf's fear delta.
-        var wolf = FindFirstObjectByType<WolfPlayer>();
+        var wolf = FindAnyObjectByType<WolfPlayer>();
         if (wolf != null)
         {
             if (_trackedFear == null || _trackedFear.gameObject != wolf.gameObject)

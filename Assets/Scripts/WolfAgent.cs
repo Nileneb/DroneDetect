@@ -22,7 +22,7 @@ public class WolfAgent : Agent
     {
         _nav = GetComponent<NavMeshAgent>();
         _rb = GetComponent<Rigidbody>();
-        _gm = FindObjectOfType<ShepherdGameManager>();
+        _gm = FindAnyObjectByType<ShepherdGameManager>();
     }
 
     public override void OnEpisodeBegin()

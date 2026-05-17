@@ -74,9 +74,9 @@ public class DroneControlPanel : MonoBehaviour
     void BootstrapSceneMode()
     {
         // Shepherd-Objekte per Discovery aktivieren/deaktivieren
-        var wolf  = FindFirstObjectByType<WolfPlayer>();
-        var sheep = FindObjectsByType<SheepNPC>(FindObjectsSortMode.None);
-        var mgr   = FindFirstObjectByType<ShepherdGameManager>();
+        var wolf  = FindAnyObjectByType<WolfPlayer>();
+        var sheep = FindObjectsByType<SheepNPC>();
+        var mgr   = FindAnyObjectByType<ShepherdGameManager>();
         var targetsGo = GameObject.Find("Targets");
 
         if (wolf != null)  wolf.gameObject.SetActive(shepherdMode);
@@ -85,7 +85,7 @@ public class DroneControlPanel : MonoBehaviour
         if (targetsGo != null) targetsGo.SetActive(!shepherdMode);
 
         // Drohne: richtige Agent-Komponente aktivieren
-        var sdc = FindFirstObjectByType<SimulatedDroneController>();
+        var sdc = FindAnyObjectByType<SimulatedDroneController>();
         if (sdc == null) return;
         var droneGo = sdc.gameObject;
 
@@ -104,8 +104,8 @@ public class DroneControlPanel : MonoBehaviour
     void ApplyMode(DroneMode mode)
     {
         _mode = mode;
-        var bp = FindFirstObjectByType<BehaviorParameters>();
-        var dr = FindFirstObjectByType<DemonstrationRecorder>();
+        var bp = FindAnyObjectByType<BehaviorParameters>();
+        var dr = FindAnyObjectByType<DemonstrationRecorder>();
 
         switch (mode)
         {

@@ -34,7 +34,7 @@ public class DronePlayer : MonoBehaviour
 
     void Start()
     {
-        _gm = FindFirstObjectByType<ShepherdGameManager>();
+        _gm = FindAnyObjectByType<ShepherdGameManager>();
         if (IsLocal)
         {
             _sdc.Takeoff();
@@ -137,7 +137,7 @@ public class DronePlayer : MonoBehaviour
         _lastHitTime = Time.time;
         Health = Mathf.Max(0, Health - 1);
 
-        var hud = FindFirstObjectByType<DroneHUD>() ?? FindFirstObjectByType<ShepherdHUD>() as MonoBehaviour;
+        var hud = FindAnyObjectByType<DroneHUD>() ?? FindAnyObjectByType<ShepherdHUD>() as MonoBehaviour;
         if (hud != null)
         {
             // Try DroneHUD.ShowMessage first; both HUDs expose it.

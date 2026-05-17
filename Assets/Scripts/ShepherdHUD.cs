@@ -33,9 +33,9 @@ public class ShepherdHUD : MonoBehaviour
 
     void Start()
     {
-        if (gm == null) gm = FindFirstObjectByType<ShepherdGameManager>();
+        if (gm == null) gm = FindAnyObjectByType<ShepherdGameManager>();
 
-        _dronePlayer = FindFirstObjectByType<DronePlayer>();
+        _dronePlayer = FindAnyObjectByType<DronePlayer>();
         if (_dronePlayer != null)
             _scarer = _dronePlayer.scarer;
 
@@ -46,7 +46,7 @@ public class ShepherdHUD : MonoBehaviour
 
         if (!isDrone)
         {
-            var wolf = FindFirstObjectByType<WolfPlayer>();
+            var wolf = FindAnyObjectByType<WolfPlayer>();
             if (wolf != null) _wolfFear = wolf.GetComponent<WolfFear>();
         }
         if (fearBarRoot != null) fearBarRoot.SetActive(!isDrone && _wolfFear != null);
@@ -115,7 +115,7 @@ public class ShepherdHUD : MonoBehaviour
     {
         if (endScreen != null) endScreen.SetActive(true);
 
-        var gm = FindFirstObjectByType<ShepherdGameManager>();
+        var gm = FindAnyObjectByType<ShepherdGameManager>();
         bool droneDestroyed = gm != null && gm.DroneWasDestroyed;
         bool wolfWiped = sheepSaved == 0;
 

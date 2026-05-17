@@ -57,12 +57,12 @@ public class LocalPlayerCamera : MonoBehaviour
     void DiscoverLocal()
     {
         // Drone first — if there's a local DronePlayer, that's us
-        var drones = Object.FindObjectsByType<DronePlayer>(FindObjectsSortMode.None);
+        var drones = Object.FindObjectsByType<DronePlayer>();
         foreach (var d in drones)
         {
             if (d.IsLocal) { _follow = d.transform; _isDrone = true; return; }
         }
-        var wolves = Object.FindObjectsByType<WolfPlayer>(FindObjectsSortMode.None);
+        var wolves = Object.FindObjectsByType<WolfPlayer>();
         foreach (var w in wolves)
         {
             if (w.IsLocal) { _follow = w.transform; _isDrone = false; return; }

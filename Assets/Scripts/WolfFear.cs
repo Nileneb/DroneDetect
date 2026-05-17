@@ -55,7 +55,7 @@ public class WolfFear : MonoBehaviour
 
     Vector3 AwayFromNearestSheep()
     {
-        var gm = FindFirstObjectByType<ShepherdGameManager>();
+        var gm = FindAnyObjectByType<ShepherdGameManager>();
         if (gm == null || gm.ActiveSheep.Count == 0) return -transform.forward;
         Transform nearest = null;
         float best = float.MaxValue;

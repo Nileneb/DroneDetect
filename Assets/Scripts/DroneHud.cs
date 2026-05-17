@@ -53,7 +53,7 @@ public class DroneHUD : MonoBehaviour
     public static DroneHUD CreateHUD(DroneAgent agent)
     {
         // Pruefen ob schon ein HUD existiert
-        DroneHUD existing = FindObjectOfType<DroneHUD>();
+        DroneHUD existing = FindAnyObjectByType<DroneHUD>();
         if (existing != null)
         {
             existing._agent = agent;
@@ -91,7 +91,7 @@ public class DroneHUD : MonoBehaviour
     /// </summary>
     public static DroneHUD CreateShepherdHUD(DronePlayer drone, WolfPlayer aiWolf = null)
     {
-        DroneHUD existing = FindObjectOfType<DroneHUD>();
+        DroneHUD existing = FindAnyObjectByType<DroneHUD>();
         if (existing != null)
         {
             existing._drone = drone;

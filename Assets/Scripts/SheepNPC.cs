@@ -85,13 +85,13 @@ public class SheepNPC : MonoBehaviour
     {
         dist = float.MaxValue;
         Vector3? nearest = null;
-        var wolves = Object.FindObjectsByType<WolfPlayer>(FindObjectsSortMode.None);
+        var wolves = Object.FindObjectsByType<WolfPlayer>();
         foreach (var w in wolves)
         {
             float d = Vector3.Distance(transform.position, w.transform.position);
             if (d < dist) { dist = d; nearest = w.transform.position; }
         }
-        var bots = Object.FindObjectsByType<SimpleAIBot>(FindObjectsSortMode.None);
+        var bots = Object.FindObjectsByType<SimpleAIBot>();
         foreach (var b in bots)
         {
             if (b.role != SimpleAIBot.Role.Wolf) continue;

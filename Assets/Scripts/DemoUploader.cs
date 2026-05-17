@@ -46,7 +46,7 @@ public class DemoUploader : MonoBehaviour
     {
         // Recorder may live on a child object (drone prefab) or on the same GO
         _recorder = GetComponent<DemonstrationRecorder>()
-                    ?? FindObjectOfType<DemonstrationRecorder>();
+                    ?? FindAnyObjectByType<DemonstrationRecorder>();
     }
 
     /// <summary>

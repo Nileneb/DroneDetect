@@ -27,7 +27,7 @@ public class WolfPlayer : MonoBehaviour
     void Start()
     {
         if (localPlayerOverride) IsLocal = true;
-        _gm = FindFirstObjectByType<ShepherdGameManager>();
+        _gm = FindAnyObjectByType<ShepherdGameManager>();
         _fear = GetComponent<WolfFear>();
         if (IsLocal && RevbClient.Instance != null)
             RevbClient.Instance.OnEvent += HandleNetEvent;

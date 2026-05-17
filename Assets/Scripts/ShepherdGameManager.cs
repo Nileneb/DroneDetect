@@ -185,7 +185,7 @@ public class ShepherdGameManager : MonoBehaviour
         uploader.role      = string.IsNullOrEmpty(_localRole) ? "drone" : _localRole;
         uploader.OnStatusChanged += msg =>
         {
-            var hud = FindFirstObjectByType<DroneHUD>();
+            var hud = FindAnyObjectByType<DroneHUD>();
             if (hud != null) hud.ShowMessage(msg, 5f);
         };
         OnRoundEnded += (saved, caught, duration) =>
@@ -193,7 +193,7 @@ public class ShepherdGameManager : MonoBehaviour
             if (IsOfflineMode())
             {
                 Debug.Log("[ShepherdGM] Demo-Upload skipped — offline mode (no JWT)");
-                var hud = FindFirstObjectByType<DroneHUD>();
+                var hud = FindAnyObjectByType<DroneHUD>();
                 if (hud != null) hud.ShowMessage("Offline-Modus — kein Upload", 5f);
                 return;
             }
@@ -305,7 +305,7 @@ public class ShepherdGameManager : MonoBehaviour
             _aiTakeoverTriggered = true;
             _aiRole = opponentRole;
             SpawnAiBot(opponentRole);
-            var hud = FindFirstObjectByType<DroneHUD>();
+            var hud = FindAnyObjectByType<DroneHUD>();
             if (hud != null) hud.ShowMessage($"Gegner disconnected — AI ({opponentRole}) übernimmt", 6f);
             yield break;
         }
@@ -364,7 +364,7 @@ public class ShepherdGameManager : MonoBehaviour
     {
         if (!_running || DroneWasDestroyed) return;
         DroneWasDestroyed = true;
-        var hud = FindFirstObjectByType<DroneHUD>();
+        var hud = FindAnyObjectByType<DroneHUD>();
         if (hud != null) hud.ShowMessage("Drohne zerstört! Wolf gewinnt.", 4f);
         EndRound();
     }
@@ -372,8 +372,8 @@ public class ShepherdGameManager : MonoBehaviour
     public void RecordEvent(string action)
     {
         var go = _localRole == "wolf"
-            ? (Component)FindFirstObjectByType<WolfPlayer>()
-            : FindFirstObjectByType<DronePlayer>();
+            ? (Component)FindAnyObjectByType<WolfPlayer>()
+            : FindAnyObjectByType<DronePlayer>();
         if (go == null) return;
 
         var p = go.transform.position;
@@ -399,8 +399,7 @@ public class ShepherdGameManager : MonoBehaviour
             if (IsOfflineMode()) { _pendingEvents.Clear(); continue; }
 #if UNITY_EDITOR
             _pendingEvents.Clear();
-            continue;
-#endif
+#else
             if (_pendingEvents.Count == 0) continue;
 
             var batch = new List<EventBatch>(_pendingEvents);
@@ -409,6 +408,7 @@ public class ShepherdGameManager : MonoBehaviour
             var wrapper = new EventBatchWrapper { events = batch };
             var json = JsonUtility.ToJson(wrapper);
             yield return PostJson($"{apiBase}/sessions/{_sessionCode}/events", json);
+#endif
         }
     }
 
@@ -422,7 +422,7 @@ public class ShepherdGameManager : MonoBehaviour
         if (endResultText)
             endResultText.text = $"Sheep Saved: {_sheepSaved}\nSheep Caught: {_sheepCaught}";
 
-        FindFirstObjectByType<ShepherdHUD>()?.ShowEndScreen(_sheepSaved, _sheepCaught, _elapsed);
+        FindAnyObjectByType<ShepherdHUD>()?.ShowEndScreen(_sheepSaved, _sheepCaught, _elapsed);
 
         OnRoundEnded?.Invoke(_sheepSaved, _sheepCaught, _elapsed);
 
@@ -474,7 +474,7 @@ public class ShepherdGameManager : MonoBehaviour
                 break;
             case "connection.lost":
                 Debug.LogWarning("[ShepherdGM] WebSocket connection.lost — relying on offline-AI fallback if opponent stays silent");
-                var hud0 = FindFirstObjectByType<DroneHUD>();
+                var hud0 = FindAnyObjectByType<DroneHUD>();
                 if (hud0 != null) hud0.ShowMessage("Verbindung verloren — versuche AI-Übernahme bei Stille", 5f);
                 break;
             case "sheep.caught":
@@ -504,14 +504,14 @@ public class ShepherdGameManager : MonoBehaviour
     // follows the wolf even when the user picked drone.
     void StripScenePreplacedActors()
     {
-        foreach (var wolf in FindObjectsByType<WolfPlayer>(FindObjectsSortMode.None))
+        foreach (var wolf in FindObjectsByType<WolfPlayer>())
         {
             if (wolf == null) continue;
             wolf.localPlayerOverride = false;
             wolf.IsLocal = false;
             wolf.gameObject.SetActive(false);
         }
-        foreach (var dp in FindObjectsByType<DronePlayer>(FindObjectsSortMode.None))
+        foreach (var dp in FindObjectsByType<DronePlayer>())
         {
             if (dp == null) continue;
             dp.IsLocal = false;
@@ -528,7 +528,7 @@ public class ShepherdGameManager : MonoBehaviour
     // start wandering randomly.
     void RepairSheep()
     {
-        var all = FindObjectsByType<SheepNPC>(FindObjectsSortMode.None);
+        var all = FindObjectsByType<SheepNPC>();
         for (int i = 0; i < all.Length; i++)
         {
             var s = all[i];
@@ -626,7 +626,7 @@ public class ShepherdGameManager : MonoBehaviour
         // WHY: Agent1 has a full programmatic HUD (crosshair + state-panel + fire-button +
         // message-line). ShepherdArena was missing it. Build it now for the local drone.
         WolfPlayer aiWolfRef = null;
-        foreach (var w in FindObjectsByType<WolfPlayer>(FindObjectsSortMode.None))
+        foreach (var w in FindObjectsByType<WolfPlayer>())
             if (w.gameObject.name == "AI_Wolf") { aiWolfRef = w; break; }
         DroneHUD.CreateShepherdHUD(drone, aiWolfRef);
     }

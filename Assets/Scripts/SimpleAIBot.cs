@@ -165,7 +165,7 @@ public class SimpleAIBot : MonoBehaviour
         centroid.y = droneHoverHeight;
 
         var wolf = FindAnyObjectByType<WolfPlayer>();
-        var bots = FindObjectsByType<SimpleAIBot>(FindObjectsSortMode.None);
+        var bots = FindObjectsByType<SimpleAIBot>();
         Transform threat = wolf != null ? wolf.transform : null;
         foreach (var b in bots) if (b != this && b.role == Role.Wolf) { threat = b.transform; break; }
 

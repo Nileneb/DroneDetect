@@ -50,7 +50,7 @@ public class LoginScreen : MonoBehaviour
 
     void Awake()
     {
-        if (matchmake == null) matchmake = FindFirstObjectByType<MatchmakeManager>();
+        if (matchmake == null) matchmake = FindAnyObjectByType<MatchmakeManager>();
     }
 
     IEnumerator Start()
@@ -231,7 +231,7 @@ public class LoginScreen : MonoBehaviour
 
     void BuildUI()
     {
-        var existing = FindFirstObjectByType<Canvas>();
+        var existing = FindAnyObjectByType<Canvas>();
         if (existing != null)
         {
             _canvas = existing;
@@ -271,7 +271,7 @@ public class LoginScreen : MonoBehaviour
 
     void EnsureEventSystem()
     {
-        if (FindFirstObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
+        if (FindAnyObjectByType<UnityEngine.EventSystems.EventSystem>() == null)
         {
             var es = new GameObject("EventSystem");
             es.AddComponent<UnityEngine.EventSystems.EventSystem>();
