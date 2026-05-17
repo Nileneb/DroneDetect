@@ -20,8 +20,14 @@ public class SimpleAIBot : MonoBehaviour
     public float scarerTriggerDistance = 7f;
 
     [Header("Wolf bot")]
-    public float wolfSpeed = 5f;
-    public float wolfCatchRadius = 1.2f;
+    public float wolfSpeed = 7f;
+    [Tooltip("Speed multiplier when a sheep is within huntRange — wolf sprints.")]
+    public float wolfSprintMultiplier = 1.5f;
+    [Tooltip("Distance under which the wolf locks-on and sprints.")]
+    public float huntRange = 10f;
+    public float wolfCatchRadius = 2.0f;
+    [Tooltip("Switch target if no progress (closing distance) for this many seconds.")]
+    public float stuckTimeout = 2.5f;
 
     [Header("Drone bot")]
     public float droneHoverHeight = 4f;
@@ -33,6 +39,11 @@ public class SimpleAIBot : MonoBehaviour
     ShepherdGameManager _gm;
     Rigidbody _rb;
     float _nextDecisionAt;
+
+    // Stuck-detection: remember last target + closest distance achieved against it
+    Transform _currentTarget;
+    float _bestDistToTarget = float.MaxValue;
+    float _stuckSince;
 
     void Start()
     {
@@ -55,30 +66,70 @@ public class SimpleAIBot : MonoBehaviour
     // ── Wolf AI ──────────────────────────────────────────────────────────
     void UpdateWolf()
     {
-        Transform target = FindNearestSheep();
-        if (target == null) return;
+        // Re-target each tick: pick the closest sheep, but stick to current
+        // target if it's still close enough — switching constantly leaves the
+        // wolf zig-zagging and never closing in.
+        Transform nearest = FindNearestSheep();
+        if (nearest == null) return;
+
+        if (_currentTarget != nearest)
+        {
+            // Allow target swap if (a) no current target, (b) nearest is
+            // significantly closer than current target, or (c) stuck for too long.
+            float curDist = _currentTarget != null
+                ? Vector3.Distance(transform.position, _currentTarget.position)
+                : float.MaxValue;
+            float newDist = Vector3.Distance(transform.position, nearest.position);
+            bool stuck = Time.time - _stuckSince > stuckTimeout;
+            if (_currentTarget == null || newDist < curDist * 0.7f || stuck)
+            {
+                _currentTarget = nearest;
+                _bestDistToTarget = newDist;
+                _stuckSince = Time.time;
+            }
+        }
+
+        var target = _currentTarget;
+        float distToTarget = Vector3.Distance(transform.position, target.position);
+
+        // Progress tracking — closing distance resets the stuck timer
+        if (distToTarget < _bestDistToTarget - 0.1f)
+        {
+            _bestDistToTarget = distToTarget;
+            _stuckSince = Time.time;
+        }
+
+        // Sprint when within huntRange — visible "Jagdtrieb"
+        float speed = distToTarget < huntRange ? wolfSpeed * wolfSprintMultiplier : wolfSpeed;
 
         if (_navAgent != null && _navAgent.isOnNavMesh)
         {
-            _navAgent.speed = wolfSpeed;
+            _navAgent.speed = speed;
             _navAgent.SetDestination(target.position);
         }
         else if (_cc != null)
         {
-            // Direct move fallback
-            var dir = (target.position - transform.position).normalized;
+            var dir = (target.position - transform.position);
             dir.y = 0;
-            _cc.SimpleMove(dir * wolfSpeed);
-            if (dir.sqrMagnitude > 0.01f)
-                transform.rotation = Quaternion.LookRotation(dir);
+            if (dir.sqrMagnitude > 0.0001f)
+            {
+                var nd = dir.normalized;
+                _cc.SimpleMove(nd * speed);
+                transform.rotation = Quaternion.Slerp(transform.rotation,
+                    Quaternion.LookRotation(nd), 6f * Time.deltaTime);
+            }
         }
 
         // Catch check
-        if (Vector3.Distance(transform.position, target.position) < wolfCatchRadius)
+        if (distToTarget < wolfCatchRadius)
         {
             var sheep = target.GetComponent<SheepNPC>();
             if (sheep != null && !sheep.IsCaught)
+            {
                 _gm.OnSheepCaught(sheep);
+                _currentTarget = null;
+                _bestDistToTarget = float.MaxValue;
+            }
         }
     }
 
