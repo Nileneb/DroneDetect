@@ -140,13 +140,13 @@ public static class BuildScript
 
         ConfigureCommonPlayerSettings();
 
-        // Force Mono for macOS cross-compile (Linux runner cannot IL2CPP→OSX).
-        // Windows stays IL2CPP (Linux runner has windows-il2cpp module).
+        // Force Mono for macOS + Windows cross-compile (local Linux Editor only
+        // ships Windows-Mono support; IL2CPP module isn't installed and would
+        // error out with "Currently selected scripting backend (IL2CPP) is not
+        // installed"). Mono is plenty for the demo build.
         var named = NamedBuildTarget.FromBuildTargetGroup(BuildPipeline.GetBuildTargetGroup(target));
-        if (target == BuildTarget.StandaloneOSX)
+        if (target == BuildTarget.StandaloneOSX || target == BuildTarget.StandaloneWindows64)
             PlayerSettings.SetScriptingBackend(named, ScriptingImplementation.Mono2x);
-        else if (target == BuildTarget.StandaloneWindows64)
-            PlayerSettings.SetScriptingBackend(named, ScriptingImplementation.IL2CPP);
 
         Directory.CreateDirectory(Path.GetDirectoryName(buildPath));
 
