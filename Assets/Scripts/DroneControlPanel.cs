@@ -89,13 +89,27 @@ public class DroneControlPanel : MonoBehaviour
         if (sdc == null) return;
         var droneGo = sdc.gameObject;
 
-        var droneAgent   = droneGo.GetComponent<DroneAgent>();
-        var shepherdAgent = droneGo.GetComponent<ShepherdDroneAgent>();
+        var droneAgent       = droneGo.GetComponent<DroneAgent>();
+        var shepherdAgent    = droneGo.GetComponent<ShepherdDroneAgent>();
+        var droneFollowAgent = droneGo.GetComponent<DroneFollowAgent>();
+        bool droneFollowMode = !shepherdMode && droneFollowAgent != null && droneFollowAgent.enabled;
 
-        if (droneAgent    != null) droneAgent.enabled    = !shepherdMode;
-        if (shepherdAgent != null) shepherdAgent.enabled =  shepherdMode;
+        if (droneFollowMode)
+        {
+            // DroneFollow is an independent training mode: never let the legacy agent start too.
+            if (droneAgent != null)    droneAgent.enabled = false;
+            if (shepherdAgent != null) shepherdAgent.enabled = false;
+        }
+        else
+        {
+            if (droneAgent != null)       droneAgent.enabled = !shepherdMode;
+            if (shepherdAgent != null)    shepherdAgent.enabled =  shepherdMode;
+            if (droneFollowAgent != null) droneFollowAgent.enabled = false;
+        }
 
-        Debug.Log($"[DroneControlPanel] SceneMode={( shepherdMode ? "Shepherd" : "Parcours" )} " +
+        string sceneMode = shepherdMode ? "Shepherd" : droneFollowMode ? "DroneFollow" : "Parcours";
+        Debug.Log($"[DroneControlPanel] SceneMode={sceneMode} " +
+                  $"droneFollowAgent={droneFollowAgent?.enabled} " +
                   $"droneAgent={droneAgent?.enabled} shepherdAgent={shepherdAgent?.enabled}");
     }
 
