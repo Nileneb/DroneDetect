@@ -4345,7 +4345,9 @@ PrefabInstance:
       propertyPath: depthPreview
       value: 
       objectReference: {fileID: 2067925196}
-    m_RemovedComponents: []
+    m_RemovedComponents:
+    - {fileID: 337876630466620919, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
+    - {fileID: 2528998815553681079, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []

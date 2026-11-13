@@ -9,9 +9,9 @@ using Unity.MLAgents.Sensors;
 using UnityEngine.UI;
 
 /// <summary>
-/// One-click wiring for the existing Agent1 training scene. It keeps DroneCSI
-/// on the component, disables it for this scene, and enables DroneFollow with
-/// a projected animated PrefabBene target and no policy image sensors.
+/// One-click wiring for the existing Agent1 training scene. It configures
+/// DroneFollow with a projected animated PrefabBene target and no policy image
+/// sensors.
 /// </summary>
 public static class DroneFollowSetup
 {
@@ -50,11 +50,6 @@ public static class DroneFollowSetup
 
         GameObject droneObject = simulatedDrone.gameObject;
         var legacyAgent = droneObject.GetComponent<DroneAgent>();
-        if (legacyAgent == null)
-        {
-            Debug.LogError("[DroneFollowSetup] DroneAgent with the existing target list was not found on the drone.");
-            return;
-        }
 
         // Main Camera supplies RGB, detection, the box overlay, and the depth
         // preview. GroundCam remains a separate downward-looking preview.
@@ -62,7 +57,7 @@ public static class DroneFollowSetup
         Camera groundCamera = FindChildCamera(droneObject, "GroundCam");
         Camera camera = mainCamera != null
             ? mainCamera
-            : legacyAgent.depthCamera != null
+            : legacyAgent != null && legacyAgent.depthCamera != null
                 ? legacyAgent.depthCamera.GetComponent<Camera>()
                 : droneObject.GetComponentInChildren<Camera>(true);
         if (camera == null)
@@ -105,7 +100,7 @@ public static class DroneFollowSetup
             return;
         }
 
-        if (legacyAgent.targets != null)
+        if (legacyAgent != null && legacyAgent.targets != null)
         {
             foreach (GameObject waypoint in legacyAgent.targets)
             {
@@ -203,7 +198,21 @@ public static class DroneFollowSetup
         followAgent.desiredDistanceMax = 3f;
         followAgent.enabled = true;
 
-        legacyAgent.enabled = false;
+        // DecisionRequester binds to the first Agent returned by GetComponent.
+        // Keeping multiple Agent components on this GameObject routes requests
+        // to the legacy component instead of DroneFollowAgent.
+        if (legacyAgent != null)
+            Undo.DestroyObjectImmediate(legacyAgent);
+        var shepherdAgent = droneObject.GetComponent<ShepherdDroneAgent>();
+        if (shepherdAgent != null)
+            Undo.DestroyObjectImmediate(shepherdAgent);
+
+        if (droneObject.GetComponent<Agent>() != followAgent)
+        {
+            Debug.LogError("[DroneFollowSetup] DroneFollowAgent is not the only Agent on the drone; DecisionRequester would target a different Agent.");
+            return;
+        }
+
         Undo.RecordObject(behavior, "Set DroneFollow behavior contract");
         behavior.BehaviorName = DroneFollowContract.BehaviorName;
         behavior.BehaviorType = BehaviorType.Default;

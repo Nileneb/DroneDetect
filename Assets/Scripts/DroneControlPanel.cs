@@ -37,6 +37,8 @@ public class DroneControlPanel : MonoBehaviour
     float _blinkTimer;
     bool _droneFollowMode;
     BehaviorParameters _behaviorParameters;
+    DecisionRequester _decisionRequester;
+    DroneFollowAgent _droneFollowAgent;
     string _lastDroneFollowStatus;
 
     // ── Persistent listener entry points ────────────────────────────────────
@@ -99,6 +101,8 @@ public class DroneControlPanel : MonoBehaviour
         var droneAgent       = droneGo.GetComponent<DroneAgent>();
         var shepherdAgent    = droneGo.GetComponent<ShepherdDroneAgent>();
         var droneFollowAgent = droneGo.GetComponent<DroneFollowAgent>();
+        _droneFollowAgent = droneFollowAgent;
+        _decisionRequester = droneGo.GetComponent<DecisionRequester>();
         _droneFollowMode = !shepherdMode && droneFollowAgent != null && droneFollowAgent.enabled;
 
         if (_droneFollowMode)
@@ -118,6 +122,9 @@ public class DroneControlPanel : MonoBehaviour
         Debug.Log($"[DroneControlPanel] SceneMode={sceneMode} " +
                   $"droneFollowAgent={droneFollowAgent?.enabled} " +
                   $"droneAgent={droneAgent?.enabled} shepherdAgent={shepherdAgent?.enabled}");
+
+        if (_droneFollowMode && (_decisionRequester == null || _decisionRequester.Agent != droneFollowAgent))
+            Debug.LogError("[DroneControlPanel] DecisionRequester targets the wrong Agent. Re-run DroneDetect > Configure Active Scene for DroneFollow.");
     }
 
     // ── Flug-Modus umschalten ───────────────────────────────────────────────
@@ -180,6 +187,11 @@ public class DroneControlPanel : MonoBehaviour
         if (_behaviorParameters == null)
         {
             status = "DroneFollow: BehaviorParameters fehlt";
+            color = ColWarn;
+        }
+        else if (_decisionRequester == null || _decisionRequester.Agent != _droneFollowAgent)
+        {
+            status = "DroneFollow: DecisionRequester falsch gebunden";
             color = ColWarn;
         }
         else if (_behaviorParameters.IsInHeuristicMode())

@@ -4,7 +4,7 @@
 
 1. Pull the latest `main` and open `Assets/Scenes/Agent1.unity` in Unity.
 2. Wait for Unity to finish importing/compiling the new scripts.
-3. Run **DroneDetect → Configure Active Scene for DroneFollow**. The setup adds the simulation controller adapter and detector, switches the behavior to `DroneFollow`, disables the legacy `DroneAgent`, disables child ML-Agents sensors, sets the decision interval to 10 Hz, and saves the scene.
+3. Run **DroneDetect → Configure Active Scene for DroneFollow**. The setup adds the simulation controller adapter and detector, switches the behavior to `DroneFollow`, removes the legacy `DroneAgent` and `ShepherdDroneAgent` components from this training-scene drone so the `DecisionRequester` targets the right agent, disables child ML-Agents sensors, sets the decision interval to 10 Hz, and saves the scene.
 4. Confirm the Console reports that the scene was configured. `Main Camera` supplies the main RGB view, follow detections and a grayscale depth imprint in `PiP_Depth`; its bounding box is drawn over the main Game view. `GroundCam` remains aimed at the ground, uses a white solid-color background, and is shown in `PiP_Ground`. No separate camera is used for depth. The target prefab is used as a moving projected target proxy; replace that renderer with the humanoid/GLB later.
 
 ## Start training
