@@ -24,6 +24,12 @@ public sealed class SimulatedMovingTarget : MonoBehaviour
     Vector3 _destination;
     float _speed;
     float _pauseRemaining;
+    float _baseRoamRadius;
+    float _baseMinSpeed;
+    float _baseMaxSpeed;
+    float _baseStopProbability;
+    float _baseMinScaleMultiplier;
+    float _baseMaxScaleMultiplier;
     bool _initialized;
 
     void Awake()
@@ -53,7 +59,25 @@ public sealed class SimulatedMovingTarget : MonoBehaviour
         if (_initialized) return;
         _startPosition = transform.position;
         _startScale = transform.localScale;
+        _baseRoamRadius = roamRadius;
+        _baseMinSpeed = minSpeed;
+        _baseMaxSpeed = maxSpeed;
+        _baseStopProbability = stopProbability;
+        _baseMinScaleMultiplier = minScaleMultiplier;
+        _baseMaxScaleMultiplier = maxScaleMultiplier;
         _initialized = true;
+    }
+
+    public void ApplyCurriculumDifficulty(int stage)
+    {
+        CaptureStartPose();
+        float progress = Mathf.Clamp01(stage / 4f);
+        roamRadius = Mathf.Lerp(0.1f, _baseRoamRadius, progress);
+        minSpeed = Mathf.Lerp(0.1f, _baseMinSpeed, progress);
+        maxSpeed = Mathf.Lerp(0.2f, _baseMaxSpeed, progress);
+        stopProbability = Mathf.Lerp(0.65f, _baseStopProbability, progress);
+        minScaleMultiplier = Mathf.Lerp(1f, _baseMinScaleMultiplier, progress);
+        maxScaleMultiplier = Mathf.Lerp(1f, _baseMaxScaleMultiplier, progress);
     }
 
     public void ResetEpisode()

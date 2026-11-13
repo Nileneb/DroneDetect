@@ -103,6 +103,7 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
     float _stateTimer;
     float _takeoffStartY;
     float _landingStartY;
+    float _nextTakeoffDiagnosticTime;
 
     // Batterie
     float _battery = 100f;
@@ -125,6 +126,7 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
 
     void FixedUpdate()
     {
+        DroneState stateAtStepStart = _state;
         float dt = Time.fixedDeltaTime;
 
         switch (_state)
@@ -160,6 +162,9 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
 
         // NavData aktualisieren
         UpdateNavdata();
+
+        if (_state != stateAtStepStart)
+            LogControllerState($"state transition {stateAtStepStart} -> {_state}");
     }
 
     // ═══════════════════════ State Updates ═══════════════════════
@@ -180,6 +185,18 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
         float heightError = targetY - transform.position.y;
         float liftForce = _rb.mass * Physics.gravity.magnitude + heightError * 5f;
         _rb.AddForce(Vector3.up * liftForce, ForceMode.Force);
+
+        if (Time.time >= _nextTakeoffDiagnosticTime)
+        {
+            _nextTakeoffDiagnosticTime = Time.time + 1f;
+            Debug.Log(
+                $"[SimulatedDroneController] TakingOff progress={progress:P0}, " +
+                $"positionY={transform.position.y:F3}, targetY={targetY:F3}, " +
+                $"velocityY={_rb.linearVelocity.y:F3}, liftForce={liftForce:F2}N, " +
+                $"isKinematic={_rb.isKinematic}, useGravity={_rb.useGravity}, " +
+                $"constraints={_rb.constraints}.",
+                this);
+        }
 
         // Stabilisierung waehrend Takeoff
         StabilizeAttitude(dt, 0f, 0f);
@@ -395,11 +412,20 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
 
     public void Takeoff()
     {
-        if (_state != DroneState.Landed) return;
+        if (_state != DroneState.Landed)
+        {
+            Debug.LogWarning(
+                $"[SimulatedDroneController] Takeoff rejected: controller state is {_state}.",
+                this);
+            return;
+        }
 
+        DroneState previousState = _state;
         _state = DroneState.TakingOff;
         _stateTimer = 0f;
         _takeoffStartY = transform.position.y;
+        _nextTakeoffDiagnosticTime = Time.time;
+        LogControllerState($"Takeoff accepted, {previousState} -> {_state}");
     }
 
     public void Land()
@@ -474,6 +500,7 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
     /// </summary>
     public void ResetController(Vector3 position, Quaternion rotation)
     {
+        DroneState previousState = _state;
         _state = DroneState.Landed;
         _stateTimer = 0f;
         _battery = 100f;
@@ -487,6 +514,7 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
         transform.rotation = rotation;
 
         UpdateNavdata();
+        LogControllerState($"training reset, {previousState} -> {_state}");
     }
 
     /// <summary>Reset + automatischer Takeoff (Convenience fuer Training).</summary>
@@ -494,6 +522,35 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
     {
         ResetController(position, rotation);
         Takeoff();
+    }
+
+    void LogControllerState(string eventName)
+    {
+        Collider rootCollider = GetComponent<Collider>();
+        Debug.Log(
+            $"[SimulatedDroneController] {eventName}; state={_state}, " +
+            $"position={transform.position}, velocity={_rb.linearVelocity}, " +
+            $"altitude={_navdata.altitude:F3}, navState={_navdata.state}, " +
+            $"isKinematic={_rb.isKinematic}, useGravity={_rb.useGravity}, " +
+            $"rootColliderEnabled={rootCollider != null && rootCollider.enabled}, " +
+            $"rootColliderMinY={(rootCollider != null ? rootCollider.bounds.min.y.ToString("F3") : "none")}, " +
+            $"constraints={_rb.constraints}, activeInHierarchy={gameObject.activeInHierarchy}, " +
+            $"enabled={enabled}.",
+            this);
+    }
+
+    void OnCollisionEnter(Collision collision)
+    {
+        if (_state != DroneState.TakingOff) return;
+
+        string contact = collision.contactCount > 0
+            ? $", firstContact={collision.GetContact(0).point}, normal={collision.GetContact(0).normal}"
+            : string.Empty;
+        Debug.LogWarning(
+            $"[SimulatedDroneController] Collision during takeoff with " +
+            $"'{collision.collider.name}' (tag={collision.collider.tag}), " +
+            $"relativeVelocity={collision.relativeVelocity}{contact}.",
+            this);
     }
 
 

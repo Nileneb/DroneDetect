@@ -3561,21 +3561,27 @@ MonoBehaviour:
   desiredAltitude: 1.5
   desiredDistanceMin: 2
   desiredDistanceMax: 3
-  altitudeRewardWeight: 0.01
-  distanceRewardWeight: 0.01
-  centeringRewardWeight: 0.01
-  smoothActionPenalty: 0.002
+  altitudeRewardWeight: 0.12
+  distanceRewardWeight: 0.25
+  centeringRewardWeight: 0.15
+  followHoldReward: 0.015
+  lostDetectionPenalty: 0.005
+  smoothActionPenalty: 0.0005
+  flightCompletionReward: 0.75
+  safeLandingMinimumFlightFraction: 0.8
+  earlyLandingPenalty: 0.02
   groundTag: Ground
   wallTag: Wall
   safeImpactSpeed: 0.5
   severeImpactSpeed: 4
   maxDamagePerImpact: 0.25
   terminalDamage: 0.85
-  crashPenalty: 0.25
-  terminalCrashPenalty: 1
+  crashPenalty: 1
+  damagePenaltyWeight: 0.75
+  terminalCrashPenalty: 2.5
   minimumControlAuthority: 0.4
   impactCooldownSeconds: 0.5
-  safeLandingReward: 0.1
+  safeLandingReward: 0.5
 --- !u!114 &3696032835637371694
 MonoBehaviour:
   m_ObjectHideFlags: 0

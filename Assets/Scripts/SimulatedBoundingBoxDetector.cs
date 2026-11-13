@@ -55,6 +55,12 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
     bool _hasCurrent;
     bool _hasCurrentViewportBox;
     float _nextSampleTime;
+    float _baseDropoutProbability;
+    float _baseCenterNoise;
+    float _baseHeightNoise;
+    float _baseMinLatencySeconds;
+    float _baseMaxLatencySeconds;
+    bool _curriculumBaseCaptured;
 
     public DroneTargetDetection Current
     {
@@ -66,6 +72,26 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
 
             return _current;
         }
+    }
+
+    public void ApplyCurriculumDifficulty(int stage)
+    {
+        if (!_curriculumBaseCaptured)
+        {
+            _baseDropoutProbability = dropoutProbability;
+            _baseCenterNoise = centerNoise;
+            _baseHeightNoise = heightNoise;
+            _baseMinLatencySeconds = minLatencySeconds;
+            _baseMaxLatencySeconds = maxLatencySeconds;
+            _curriculumBaseCaptured = true;
+        }
+
+        float progress = Mathf.Clamp01(stage / 4f);
+        dropoutProbability = _baseDropoutProbability * progress;
+        centerNoise = _baseCenterNoise * progress;
+        heightNoise = _baseHeightNoise * progress;
+        minLatencySeconds = Mathf.Lerp(_baseMinLatencySeconds * 0.5f, _baseMinLatencySeconds, progress);
+        maxLatencySeconds = Mathf.Lerp(_baseMaxLatencySeconds * 0.5f, _baseMaxLatencySeconds, progress);
     }
 
     /// <summary>
