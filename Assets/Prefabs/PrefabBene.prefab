@@ -10,15 +10,15 @@ PrefabInstance:
     m_Modifications:
     - target: {fileID: -3910990755373119420, guid: 1e82f5406074a05969ac170237145b9c, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 2.7541292
+      value: -1.3224304
       objectReference: {fileID: 0}
     - target: {fileID: -3910990755373119420, guid: 1e82f5406074a05969ac170237145b9c, type: 3}
       propertyPath: m_LocalPosition.y
-      value: 0.13017395
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: -3910990755373119420, guid: 1e82f5406074a05969ac170237145b9c, type: 3}
       propertyPath: m_LocalPosition.z
-      value: 19.94237
+      value: 6.58296
       objectReference: {fileID: 0}
     - target: {fileID: -3910990755373119420, guid: 1e82f5406074a05969ac170237145b9c, type: 3}
       propertyPath: m_LocalRotation.w
@@ -54,10 +54,38 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8771091787928289351, guid: 1e82f5406074a05969ac170237145b9c, type: 3}
       propertyPath: m_Name
-      value: Meshy_AI_Straw_Hat_Wanderer_All_Animations
+      value: PrefabBene
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 8771091787928289351, guid: 1e82f5406074a05969ac170237145b9c, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 2190810307739069743}
   m_SourcePrefab: {fileID: -4161369568681901532, guid: 1e82f5406074a05969ac170237145b9c, type: 3}
+--- !u!1 &2023016099353210870 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 8771091787928289351, guid: 1e82f5406074a05969ac170237145b9c, type: 3}
+  m_PrefabInstance: {fileID: 7325702851187437489}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &2190810307739069743
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 2023016099353210870}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f8d2f7db6cd24d43a9d8bb5dd0e30004, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::SimulatedMovingTarget
+  roamRadius: 4
+  minSpeed: 0.35
+  maxSpeed: 1.25
+  stopProbability: 0.25
+  minStopSeconds: 0.4
+  maxStopSeconds: 1.5
+  minScaleMultiplier: 0.8
+  maxScaleMultiplier: 1.2

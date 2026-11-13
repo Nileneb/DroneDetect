@@ -3337,13 +3337,12 @@ GameObject:
   - component: {fileID: 6505240}
   - component: {fileID: 5601268202979253966}
   - component: {fileID: 4397774650755900898}
-  - component: {fileID: 337876630466620919}
   - component: {fileID: 494212966767916215}
   - component: {fileID: 7640018841349597378}
-  - component: {fileID: 2528998815553681079}
   - component: {fileID: 4437751787148306321}
   - component: {fileID: 2292867821588736545}
   - component: {fileID: 4314018144792344736}
+  - component: {fileID: 3696032835637371694}
   m_Layer: 0
   m_Name: Drone
   m_TagString: Player
@@ -3478,46 +3477,6 @@ MonoBehaviour:
   m_UseChildActuators: 1
   m_DeterministicInference: 0
   m_ObservableAttributeHandling: 0
---- !u!114 &337876630466620919
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 193520}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 18e80a2a8b31a3aeaaa934b5180d6c8d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DroneAgent
-  agentParameters:
-    maxStep: 0
-  hasUpgradedFromAgentParameters: 1
-  MaxStep: 500000
-  targets:
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
-  - {fileID: 0}
-  targetReward: 1
-  allTargetsBonus: 0.8
-  groundPenalty: -1
-  wallPenalty: -1.5
-  enableCrashDetection: 1
-  episodeStepLimit: 3000
-  timeoutPenalty: -0.2
-  groundTag: Ground
-  wallTag: Wall
-  safeAltitude: 0.3
-  crashAltitude: 0.15
-  obstacles:
-  - {fileID: 3493159866709144638, guid: 10218050159550f9e8ff5e69ce064be6, type: 3}
-  overrideCurriculumLevel: -1
-  parcourLayouts:
-  - name: 
-    targetPositions: []
-  depthCamera: {fileID: 0}
-  targetJitterBounds: {x: 1.5, y: 0.5, z: 1.5}
 --- !u!114 &494212966767916215
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3549,28 +3508,6 @@ MonoBehaviour:
   NumStepsToRecord: 0
   DemonstrationName: DroneRouteDemo
   DemonstrationDirectory: Assets/Demonstrations
---- !u!114 &2528998815553681079
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 193520}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 6b7d6deb93917904197dc1641acea8b9, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::ShepherdDroneAgent
-  agentParameters:
-    maxStep: 0
-  hasUpgradedFromAgentParameters: 1
-  MaxStep: 0
-  scarer: {fileID: 0}
-  scarerAutoRadius: 7
-  fearDeltaGain: 4
-  panicBonus: 3
-  perSheepAliveBonus: 0.0003
-  deathPenalty: 1
 --- !u!114 &4437751787148306321
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3639,6 +3576,23 @@ MonoBehaviour:
   minimumControlAuthority: 0.4
   impactCooldownSeconds: 0.5
   safeLandingReward: 0.1
+--- !u!114 &3696032835637371694
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 193520}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 132e1194facb64429b007ea1edf562d0, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Unity.ML-Agents::Unity.MLAgents.Sensors.RenderTextureSensorComponent
+  m_RenderTexture: {fileID: 8400000, guid: 639d8b84aa10ba50695f52c50ac9338d, type: 2}
+  m_SensorName: DroneFollowDepth
+  m_Grayscale: 1
+  m_ObservationStacks: 1
+  m_Compression: 0
 --- !u!1 &195556
 GameObject:
   m_ObjectHideFlags: 0
@@ -3826,7 +3780,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::DroneDepthCamera
   depthPreview: {fileID: 0}
-  resolution: 256
+  outputTexture: {fileID: 8400000, guid: 639d8b84aa10ba50695f52c50ac9338d, type: 2}
+  resolution: 84
   maxVisualizationDistance: 20
   updateIntervalSteps: 5
 --- !u!1 &7902662538032002566

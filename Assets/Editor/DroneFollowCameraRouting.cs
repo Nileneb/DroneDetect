@@ -77,7 +77,7 @@ public static class DroneFollowCameraRouting
         int removedSensors = RemoveCameraSensors(scene);
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveOpenScenes();
-        Debug.Log("[DroneFollowCameraRouting] Saved roles: Main Camera -> primary RGB display, target detection, screen bounding box and depth preview; downward GroundCam -> PiP_Ground; no separate depth camera. Ground preview=" + groundPreviewReady + ", removed CameraSensorComponent(s)=" + removedSensors + ".");
+        Debug.Log("[DroneFollowCameraRouting] Saved roles: Main Camera -> primary RGB display, target detection, centered depth preview and policy observation; downward GroundCam -> PiP_Ground; no separate depth camera. Ground preview=" + groundPreviewReady + ", removed CameraSensorComponent(s)=" + removedSensors + ".");
     }
     static bool RoutePreview(Scene scene, Camera camera, string previewName, bool required)
     {

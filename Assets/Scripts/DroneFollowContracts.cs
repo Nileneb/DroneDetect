@@ -10,6 +10,8 @@ public static class DroneFollowContract
     public const int PreviousActionSize = 4;
     public const int DamageSize = 1;
     public const int ObservationSize = ProprioceptionSize + DetectionSize + PreviousActionSize + DamageSize;
+    public const int DepthObservationWidth = 84;
+    public const int DepthObservationHeight = 84;
 
     public const int ActionSize = 4;
     public const int DiscreteBranchSize = 1;

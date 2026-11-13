@@ -2,14 +2,15 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Generates a grayscale depth view from the same camera render used for the
-/// main RGB image. The depth preview is visualization only, not a policy sensor.
+/// Generates a centered grayscale depth view from the main camera render. The
+/// output can be shared by the UI preview and an ML-Agents RenderTextureSensor.
 /// </summary>
 [RequireComponent(typeof(Camera))]
 public class DroneDepthCamera : MonoBehaviour
 {
-    [Header("Depth Preview")]
+    [Header("Depth Output")]
     public RawImage depthPreview;
+    public RenderTexture outputTexture;
     [Min(32)] public int resolution = 256;
     [Min(0.1f)] public float maxVisualizationDistance = 20f;
     [Min(0)] public int updateIntervalSteps = 5;
@@ -18,6 +19,7 @@ public class DroneDepthCamera : MonoBehaviour
 
     Camera _cam;
     Material _depthMat;
+    bool _ownsDepthRT;
     int _stepCounter;
 
     void Awake()
@@ -25,12 +27,18 @@ public class DroneDepthCamera : MonoBehaviour
         _cam = GetComponent<Camera>();
         _cam.depthTextureMode = DepthTextureMode.Depth;
 
-        float aspect = _cam.aspect > 0f ? _cam.aspect : 1f;
-        int width = Mathf.Max(32, resolution);
-        int height = Mathf.Max(32, Mathf.RoundToInt(width / aspect));
-        DepthRT = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
-        DepthRT.name = "DroneDepthRT";
-        DepthRT.Create();
+        DepthRT = outputTexture;
+        if (DepthRT == null)
+        {
+            int size = Mathf.Max(32, resolution);
+            DepthRT = new RenderTexture(size, size, 0, RenderTextureFormat.ARGB32)
+            {
+                name = "DroneDepthRT"
+            };
+            _ownsDepthRT = true;
+        }
+        if (!DepthRT.IsCreated())
+            DepthRT.Create();
 
         Shader shader = Shader.Find("DroneDetect/DepthVisualize");
         if (shader == null)
@@ -47,21 +55,36 @@ public class DroneDepthCamera : MonoBehaviour
 
     void OnDestroy()
     {
-        if (DepthRT != null) DepthRT.Release();
+        if (_ownsDepthRT && DepthRT != null)
+        {
+            DepthRT.Release();
+            Destroy(DepthRT);
+        }
         if (_depthMat != null) Destroy(_depthMat);
     }
 
     public void NotifyStep()
     {
-        if (updateIntervalSteps <= 0) return;
         _stepCounter++;
-        _cam.enabled = _stepCounter % updateIntervalSteps == 0;
+        if (_cam != null)
+            _cam.enabled = updateIntervalSteps <= 0 || _stepCounter % updateIntervalSteps == 0;
     }
 
     void OnRenderImage(RenderTexture src, RenderTexture dst)
     {
-        if (_depthMat != null)
+        if (_depthMat != null && DepthRT != null)
+        {
+            float sourceAspect = src.width / (float)src.height;
+            float outputAspect = DepthRT.width / (float)DepthRT.height;
+            Vector2 cropScale = Vector2.one;
+            if (sourceAspect > outputAspect)
+                cropScale.x = outputAspect / sourceAspect;
+            else
+                cropScale.y = sourceAspect / outputAspect;
+
+            _depthMat.SetVector("_CropScale", cropScale);
             Graphics.Blit(src, DepthRT, _depthMat);
+        }
 
         Graphics.Blit(src, dst);
     }

@@ -4,9 +4,9 @@ using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Sensors;
 
 /// <summary>
-/// DroneFollow policy: flight state, detector box, previous commands, and
-/// accumulated damage. No pixels or world-space target direction enter
-/// CollectObservations. Ground truth is used only for training reward shaping.
+/// DroneFollow policy: vector state plus the attached grayscale depth sensor.
+/// CollectObservations supplies flight state, detector box, previous commands,
+/// and damage; ground truth is used only for training reward shaping.
 /// </summary>
 public sealed class DroneFollowAgent : Agent
 {
@@ -63,6 +63,25 @@ public sealed class DroneFollowAgent : Agent
             Debug.LogError("[DroneFollowAgent] No target detection source is attached.", this);
         if (followTarget == null)
             Debug.LogError("[DroneFollowAgent] Follow target is not assigned.", this);
+
+        RenderTextureSensorComponent depthSensor = GetComponent<RenderTextureSensorComponent>();
+        DroneDepthCamera depthCamera = GetComponentInChildren<DroneDepthCamera>(true);
+        if (depthSensor == null ||
+            depthSensor.RenderTexture == null ||
+            depthSensor.RenderTexture.width != DroneFollowContract.DepthObservationWidth ||
+            depthSensor.RenderTexture.height != DroneFollowContract.DepthObservationHeight ||
+            !depthSensor.Grayscale)
+        {
+            Debug.LogError(
+                $"[DroneFollowAgent] Expected a {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight} RenderTextureSensorComponent on the Agent. Re-run DroneDetect > Configure Active Scene for DroneFollow.",
+                this);
+        }
+        else if (depthCamera == null || depthCamera.outputTexture != depthSensor.RenderTexture)
+        {
+            Debug.LogError(
+                "[DroneFollowAgent] The depth sensor is not connected to the Main Camera depth output. Re-run DroneDetect > Configure Active Scene for DroneFollow.",
+                this);
+        }
     }
 
     public override void OnEpisodeBegin()

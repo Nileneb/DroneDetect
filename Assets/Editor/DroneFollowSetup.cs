@@ -10,13 +10,14 @@ using UnityEngine.UI;
 
 /// <summary>
 /// One-click wiring for the existing Agent1 training scene. It configures
-/// DroneFollow with a projected animated PrefabBene target and no policy image
-/// sensors.
+/// DroneFollow with a projected animated PrefabBene target and a centered
+/// grayscale depth observation.
 /// </summary>
 public static class DroneFollowSetup
 {
     const string TrainingScenePath = "Assets/Scenes/Agent1.unity";
     const string TargetPrefabPath = "Assets/Prefabs/PrefabBene.prefab";
+    const string DepthTextureAssetPath = "Assets/RenderTextures/PiP_DepthCam.renderTexture";
     const string TargetInstanceName = "DroneFollowTarget";
     const string GroundPreviewName = "PiP_Ground";
     const string DepthPreviewName = "PiP_Depth";
@@ -121,6 +122,7 @@ public static class DroneFollowSetup
         // sensors. Remove them from this training scene so no Agent can update
         // a stale CameraSensor at episode end. Unity Camera components remain.
         int removedCameraSensors = RemoveCameraSensorComponents(trainingScene);
+        RawImage groundPreview = GetRawImage(trainingScene, GroundPreviewName);
 
         if (groundCamera != null)
         {
@@ -128,7 +130,6 @@ public static class DroneFollowSetup
             groundCamera.clearFlags = CameraClearFlags.SolidColor;
             groundCamera.backgroundColor = Color.white;
 
-            RawImage groundPreview = GetRawImage(trainingScene, GroundPreviewName);
             RenderTexture groundTexture = groundPreview != null ? groundPreview.texture as RenderTexture : null;
             if (groundTexture != null)
             {
@@ -140,6 +141,14 @@ public static class DroneFollowSetup
                 Debug.LogWarning("[DroneFollowSetup] PiP_Ground does not reference a RenderTexture; GroundCam will still be used for projection, but its preview cannot be routed automatically.");
             }
             EditorUtility.SetDirty(groundCamera);
+        }
+
+        if (groundPreview != null)
+        {
+            Undo.RecordObject(groundPreview, "Show opaque GroundCam preview");
+            groundPreview.color = Color.white;
+            groundPreview.raycastTarget = false;
+            EditorUtility.SetDirty(groundPreview);
         }
 
         var controllerAdapter = droneObject.GetComponent<SimulatedDroneFollowControllerAdapter>();
@@ -157,12 +166,38 @@ public static class DroneFollowSetup
         detector.maxLatencySeconds = 0.20f;
 
         RawImage depthPreview = GetRawImage(trainingScene, DepthPreviewName);
+        if (depthPreview != null)
+        {
+            Undo.RecordObject(depthPreview, "Show opaque DroneFollow depth preview");
+            depthPreview.color = Color.white;
+            depthPreview.raycastTarget = false;
+            EditorUtility.SetDirty(depthPreview);
+        }
+
+        RenderTexture depthTexture = depthPreview != null
+            ? depthPreview.texture as RenderTexture
+            : AssetDatabase.LoadAssetAtPath<RenderTexture>(DepthTextureAssetPath);
+        if (depthTexture == null)
+        {
+            Debug.LogError($"[DroneFollowSetup] The depth observation RenderTexture is missing. Expected a RenderTexture at {DepthTextureAssetPath}.");
+            return;
+        }
+
+        if (depthTexture.width != DroneFollowContract.DepthObservationWidth ||
+            depthTexture.height != DroneFollowContract.DepthObservationHeight)
+        {
+            Debug.LogError(
+                $"[DroneFollowSetup] Depth RenderTexture must be {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight}, but is {depthTexture.width}x{depthTexture.height}. Resize the asset before configuring the scene.");
+            return;
+        }
+
         var depthProcessor = camera.GetComponent<DroneDepthCamera>();
         if (depthProcessor == null)
             depthProcessor = Undo.AddComponent<DroneDepthCamera>(camera.gameObject);
-        Undo.RecordObject(depthProcessor, "Generate depth preview from Main Camera");
+        Undo.RecordObject(depthProcessor, "Generate centered depth observation from Main Camera");
         depthProcessor.depthPreview = depthPreview;
-        depthProcessor.resolution = 256;
+        depthProcessor.outputTexture = depthTexture;
+        depthProcessor.resolution = DroneFollowContract.DepthObservationWidth;
         depthProcessor.maxVisualizationDistance = 20f;
         depthProcessor.enabled = true;
 
@@ -180,6 +215,16 @@ public static class DroneFollowSetup
             }
             EditorUtility.SetDirty(separateDepthCamera);
         }
+
+        var depthSensor = droneObject.GetComponent<RenderTextureSensorComponent>();
+        if (depthSensor == null)
+            depthSensor = Undo.AddComponent<RenderTextureSensorComponent>(droneObject);
+        Undo.RecordObject(depthSensor, "Add centered grayscale depth observation");
+        depthSensor.RenderTexture = depthTexture;
+        depthSensor.SensorName = "DroneFollowDepth";
+        depthSensor.Grayscale = true;
+        depthSensor.ObservationStacks = 1;
+        depthSensor.CompressionType = SensorCompressionType.None;
 
         ConfigureBoundingBoxOverlay(trainingScene, detector);
 
@@ -239,6 +284,7 @@ public static class DroneFollowSetup
         EditorUtility.SetDirty(behavior);
         EditorUtility.SetDirty(detector);
         EditorUtility.SetDirty(depthProcessor);
+        EditorUtility.SetDirty(depthSensor);
         EditorUtility.SetDirty(targetMotion);
         EditorUtility.SetDirty(followAgent);
         EditorUtility.SetDirty(requester);
@@ -246,7 +292,7 @@ public static class DroneFollowSetup
         EditorSceneManager.SaveOpenScenes();
         Selection.activeGameObject = droneObject;
 
-        Debug.Log($"[DroneFollowSetup] Agent1 configured: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} continuous actions + {DroneFollowContract.DiscreteBranchSize} discrete branch, {actualRateHz:F1} Hz; Main Camera drives detection, RGB display and depth preview; GroundCam remains downward-facing; separate depth camera disabled; removed {removedCameraSensors} CameraSensorComponent(s).");
+        Debug.Log($"[DroneFollowSetup] Agent1 configured: {DroneFollowContract.ObservationSize} vector observations + {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight} grayscale depth image, {DroneFollowContract.ActionSize} continuous actions + {DroneFollowContract.DiscreteBranchSize} discrete branch, {actualRateHz:F1} Hz; centered depth crop and detector coordinates share the Main Camera view; removed {removedCameraSensors} CameraSensorComponent(s).");
     }
 
     static Camera FindChildCamera(GameObject root, string cameraName)

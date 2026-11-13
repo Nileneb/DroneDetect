@@ -27,13 +27,23 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
     {
         public DroneTargetDetection Detection;
         public Rect ViewportBox;
+        public Rect CropRect;
+        public float CropBoxWidth;
         public bool HasViewportBox;
         public float DeliverAt;
 
-        public PendingDetection(DroneTargetDetection detection, Rect viewportBox, bool hasViewportBox, float deliverAt)
+        public PendingDetection(
+            DroneTargetDetection detection,
+            Rect viewportBox,
+            Rect cropRect,
+            float cropBoxWidth,
+            bool hasViewportBox,
+            float deliverAt)
         {
             Detection = detection;
             ViewportBox = viewportBox;
+            CropRect = cropRect;
+            CropBoxWidth = cropBoxWidth;
             HasViewportBox = hasViewportBox;
             DeliverAt = deliverAt;
         }
@@ -84,7 +94,9 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
         {
             _nextSampleTime = Time.time + interval;
             Rect viewportBox;
-            DroneTargetDetection detection = ProjectTarget(out viewportBox);
+            Rect cropRect;
+            float cropBoxWidth;
+            DroneTargetDetection detection = ProjectTarget(out viewportBox, out cropRect, out cropBoxWidth);
             bool hasViewportBox = detection.Visible;
 
             if (detection.Visible)
@@ -104,21 +116,26 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
                     detection.Height = Mathf.Clamp01(
                         detection.Height + Random.Range(-heightNoise, heightNoise));
 
-                    // Keep the displayed box aligned with the noisy center and
-                    // height returned by this delayed detector sample.
-                    float width = viewportBox.width;
+                    // Keep the displayed box aligned with the noisy center
+                    // and height in the centered depth-observation crop.
                     float centerX = (detection.CenterX + 1f) * 0.5f;
                     float centerY = (detection.CenterY + 1f) * 0.5f;
-                    float x = Mathf.Clamp(centerX - width * 0.5f, 0f, 1f - width);
+                    float x = Mathf.Clamp(centerX - cropBoxWidth * 0.5f, 0f, 1f - cropBoxWidth);
                     float y = Mathf.Clamp(centerY - detection.Height * 0.5f, 0f, 1f - detection.Height);
-                    viewportBox = new Rect(x, y, width, detection.Height);
+                    Rect cropBox = new Rect(x, y, cropBoxWidth, detection.Height);
+                    viewportBox = new Rect(
+                        cropRect.x + cropBox.x * cropRect.width,
+                        cropRect.y + cropBox.y * cropRect.height,
+                        cropBox.width * cropRect.width,
+                        cropBox.height * cropRect.height);
                 }
             }
 
             float minDelay = Mathf.Min(minLatencySeconds, maxLatencySeconds);
             float maxDelay = Mathf.Max(minLatencySeconds, maxLatencySeconds);
             float delay = Random.Range(minDelay, maxDelay);
-            _pending.Enqueue(new PendingDetection(detection, viewportBox, hasViewportBox, Time.time + delay));
+            _pending.Enqueue(new PendingDetection(
+                detection, viewportBox, cropRect, cropBoxWidth, hasViewportBox, Time.time + delay));
         }
 
         while (_pending.Count > 0 && _pending.Peek().DeliverAt <= Time.time)
@@ -131,9 +148,11 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
         }
     }
 
-    DroneTargetDetection ProjectTarget(out Rect viewportBox)
+    DroneTargetDetection ProjectTarget(out Rect viewportBox, out Rect cropRect, out float cropBoxWidth)
     {
         viewportBox = Rect.zero;
+        cropRect = Rect.zero;
+        cropBoxWidth = 0f;
         if (observationCamera == null || target == null)
             return DroneTargetDetection.None(Time.time);
 
@@ -175,12 +194,30 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
         if (width <= 0f || height <= 0f)
             return DroneTargetDetection.None(Time.time);
 
-        viewportBox = Rect.MinMaxRect(minX, minY, maxX, maxY);
+        float aspect = Mathf.Max(0.01f, observationCamera.aspect);
+        float cropWidth = aspect > 1f ? 1f / aspect : 1f;
+        float cropHeight = aspect < 1f ? aspect : 1f;
+        cropRect = new Rect((1f - cropWidth) * 0.5f, (1f - cropHeight) * 0.5f, cropWidth, cropHeight);
+
+        float clippedMinX = Mathf.Max(minX, cropRect.xMin);
+        float clippedMaxX = Mathf.Min(maxX, cropRect.xMax);
+        float clippedMinY = Mathf.Max(minY, cropRect.yMin);
+        float clippedMaxY = Mathf.Min(maxY, cropRect.yMax);
+        if (clippedMaxX <= clippedMinX || clippedMaxY <= clippedMinY)
+            return DroneTargetDetection.None(Time.time);
+
+        float cropMinX = Mathf.Clamp01((clippedMinX - cropRect.xMin) / cropRect.width);
+        float cropMaxX = Mathf.Clamp01((clippedMaxX - cropRect.xMin) / cropRect.width);
+        float cropMinY = Mathf.Clamp01((clippedMinY - cropRect.yMin) / cropRect.height);
+        float cropMaxY = Mathf.Clamp01((clippedMaxY - cropRect.yMin) / cropRect.height);
+        viewportBox = Rect.MinMaxRect(clippedMinX, clippedMinY, clippedMaxX, clippedMaxY);
 
         // Center x/y are [-1,1], with positive y upward; height is image fraction.
-        float centerX = ((minX + maxX) * 0.5f) * 2f - 1f;
-        float centerY = ((minY + maxY) * 0.5f) * 2f - 1f;
-        return new DroneTargetDetection(centerX, centerY, height, true, Time.time);
+        float centerX = ((cropMinX + cropMaxX) * 0.5f) * 2f - 1f;
+        float centerY = ((cropMinY + cropMaxY) * 0.5f) * 2f - 1f;
+        cropBoxWidth = cropMaxX - cropMinX;
+        float cropBoxHeight = cropMaxY - cropMinY;
+        return new DroneTargetDetection(centerX, centerY, cropBoxHeight, true, Time.time);
     }
 
     public void ResetDetection()

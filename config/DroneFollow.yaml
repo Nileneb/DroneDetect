@@ -14,6 +14,7 @@ behaviors:
       normalize: true
       hidden_units: 256
       num_layers: 3
+      vis_encode_type: simple
     reward_signals:
       extrinsic:
         gamma: 0.99
@@ -26,9 +27,9 @@ behaviors:
 env_settings:
   base_port: 5004
 
-# No automatic --initialize-from: DroneFollow has 19 observations and a hybrid
-# action space; the existing DroneCSI checkpoint used 14 observations and
-# ground-truth target data.
+# No automatic --initialize-from: DroneFollow uses 19 vector values, a
+# centered 84x84 grayscale depth image, and hybrid actions. Existing
+# DroneFollow and DroneCSI checkpoints do not have this visual input contract.
 
 # Keep editor training at real time so accelerated physics does not starve
 # the Unity Editor's ML-Agents step/response loop.
