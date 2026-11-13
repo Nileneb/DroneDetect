@@ -4,7 +4,7 @@ using UnityEngine;
 /// <summary>
 /// Lightweight detector surrogate. It projects target renderer bounds into the
 /// camera image and applies detector-like jitter, dropouts and delivery latency.
-/// It emits only four scalar values; no image is passed to the policy.
+/// It emits only four scalar values to the policy; no image is passed to it.
 /// </summary>
 public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDetectionSource
 {
@@ -26,18 +26,24 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
     struct PendingDetection
     {
         public DroneTargetDetection Detection;
+        public Rect ViewportBox;
+        public bool HasViewportBox;
         public float DeliverAt;
 
-        public PendingDetection(DroneTargetDetection detection, float deliverAt)
+        public PendingDetection(DroneTargetDetection detection, Rect viewportBox, bool hasViewportBox, float deliverAt)
         {
             Detection = detection;
+            ViewportBox = viewportBox;
+            HasViewportBox = hasViewportBox;
             DeliverAt = deliverAt;
         }
     }
 
     readonly Queue<PendingDetection> _pending = new Queue<PendingDetection>();
     DroneTargetDetection _current = new DroneTargetDetection();
+    Rect _currentViewportBox;
     bool _hasCurrent;
+    bool _hasCurrentViewportBox;
     float _nextSampleTime;
 
     public DroneTargetDetection Current
@@ -52,6 +58,23 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
         }
     }
 
+    /// <summary>
+    /// Returns the normalized [0,1] viewport rectangle for the most recently
+    /// delivered detection. This is debug visualization only and is not added
+    /// to the policy observation vector.
+    /// </summary>
+    public bool TryGetCurrentViewportBox(out Rect viewportBox)
+    {
+        if (Current.Visible && _hasCurrentViewportBox)
+        {
+            viewportBox = _currentViewportBox;
+            return true;
+        }
+
+        viewportBox = Rect.zero;
+        return false;
+    }
+
     void Update()
     {
         if (observationCamera == null || target == null) return;
@@ -60,13 +83,17 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
         if (Time.time >= _nextSampleTime)
         {
             _nextSampleTime = Time.time + interval;
-            DroneTargetDetection detection = ProjectTarget();
+            Rect viewportBox;
+            DroneTargetDetection detection = ProjectTarget(out viewportBox);
+            bool hasViewportBox = detection.Visible;
 
             if (detection.Visible)
             {
                 if (Random.value < dropoutProbability)
                 {
                     detection = DroneTargetDetection.None(Time.time);
+                    viewportBox = Rect.zero;
+                    hasViewportBox = false;
                 }
                 else
                 {
@@ -76,24 +103,37 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
                         detection.CenterY + Random.Range(-centerNoise, centerNoise), -1f, 1f);
                     detection.Height = Mathf.Clamp01(
                         detection.Height + Random.Range(-heightNoise, heightNoise));
+
+                    // Keep the displayed box aligned with the noisy center and
+                    // height returned by this delayed detector sample.
+                    float width = viewportBox.width;
+                    float centerX = (detection.CenterX + 1f) * 0.5f;
+                    float centerY = (detection.CenterY + 1f) * 0.5f;
+                    float x = Mathf.Clamp(centerX - width * 0.5f, 0f, 1f - width);
+                    float y = Mathf.Clamp(centerY - detection.Height * 0.5f, 0f, 1f - detection.Height);
+                    viewportBox = new Rect(x, y, width, detection.Height);
                 }
             }
 
             float minDelay = Mathf.Min(minLatencySeconds, maxLatencySeconds);
             float maxDelay = Mathf.Max(minLatencySeconds, maxLatencySeconds);
             float delay = Random.Range(minDelay, maxDelay);
-            _pending.Enqueue(new PendingDetection(detection, Time.time + delay));
+            _pending.Enqueue(new PendingDetection(detection, viewportBox, hasViewportBox, Time.time + delay));
         }
 
         while (_pending.Count > 0 && _pending.Peek().DeliverAt <= Time.time)
         {
-            _current = _pending.Dequeue().Detection;
+            PendingDetection delivered = _pending.Dequeue();
+            _current = delivered.Detection;
+            _currentViewportBox = delivered.ViewportBox;
+            _hasCurrentViewportBox = delivered.HasViewportBox && delivered.Detection.Visible;
             _hasCurrent = true;
         }
     }
 
-    DroneTargetDetection ProjectTarget()
+    DroneTargetDetection ProjectTarget(out Rect viewportBox)
     {
+        viewportBox = Rect.zero;
         if (observationCamera == null || target == null)
             return DroneTargetDetection.None(Time.time);
 
@@ -135,6 +175,8 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
         if (width <= 0f || height <= 0f)
             return DroneTargetDetection.None(Time.time);
 
+        viewportBox = Rect.MinMaxRect(minX, minY, maxX, maxY);
+
         // Center x/y are [-1,1], with positive y upward; height is image fraction.
         float centerX = ((minX + maxX) * 0.5f) * 2f - 1f;
         float centerY = ((minY + maxY) * 0.5f) * 2f - 1f;
@@ -145,6 +187,8 @@ public sealed class SimulatedBoundingBoxDetector : MonoBehaviour, IDroneTargetDe
     {
         _pending.Clear();
         _current = DroneTargetDetection.None(Time.time);
+        _currentViewportBox = Rect.zero;
+        _hasCurrentViewportBox = false;
         _hasCurrent = true;
         _nextSampleTime = Time.time;
     }
