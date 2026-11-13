@@ -2,11 +2,13 @@
 # DroneDetect training-run launcher. Use via:
 #   ./tools/run_training.sh phase1                          # train DroneCSI from scratch
 #   ./tools/run_training.sh phase4                          # train DroneShepherd + GAIL
+#   ./tools/run_training.sh phasefollow                     # train DroneFollow from scratch
 #   ./tools/run_training.sh phase4 --resume                 # continue last run
 #   ./tools/run_training.sh phase4 --transfer results/v8_1  # transfer-init from a prior run
 #
 # Prereq: conda env `mlagents` activated OR /home/nileneb/miniconda3/envs/mlagents/bin in PATH.
 # Unity Editor must be running with the right scene loaded + Play-on-connect ready.
+# For phasefollow, open Agent1.unity and run DroneDetect > Configure Active Scene for DroneFollow.
 set -euo pipefail
 
 PROJECT=/home/nileneb/DroneDetect
@@ -56,17 +58,30 @@ case "$PHASE" in
       "$@"
     ;;
 
+  phasefollow)
+    RUN_ID="DroneFollow_$(date +%Y%m%d_%H%M)"
+    echo "=== DroneFollow (18 observations, 4 actions) — run_id=$RUN_ID ==="
+    echo "No automatic DroneCSI warm-start: its 14-input ground-truth policy is not shape/semantics compatible."
+    cd "$PROJECT"
+    mlagents-learn config/DroneFollow.yaml \
+      --run-id="$RUN_ID" \
+      --time-scale=10 \
+      --no-graphics \
+      "$@"
+    ;;
+
   tb|tensorboard)
     tensorboard --logdir "$PROJECT/results/" --port 6006 --bind_all
     ;;
 
   *)
-    echo "Usage: $0 {phase1|phase4|tb} [extra mlagents flags]"
+    echo "Usage: $0 {phase1|phase4|phasefollow|tb} [extra mlagents flags]"
     echo ""
     echo "Examples:"
     echo "  $0 phase1                  # train DroneCSI from scratch"
     echo "  $0 phase4                  # train Shepherd, auto-transfer from latest CSI run"
-    echo "  $0 phase4 --resume         # continue last Shepherd run"
+    echo "  $0 phasefollow             # train detector-vector DroneFollow from scratch"
+    echo "  $0 phase4 --resume         # continue last run"
     echo "  $0 phase1 --resume --keep-checkpoints 20"
     echo "  $0 tb                      # serve tensorboard on :6006"
     exit 1
