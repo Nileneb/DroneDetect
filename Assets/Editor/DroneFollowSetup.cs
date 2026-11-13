@@ -1,6 +1,7 @@
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
@@ -12,13 +13,35 @@ using Unity.MLAgents.Policies;
 /// </summary>
 public static class DroneFollowSetup
 {
+    const string TrainingScenePath = "Assets/Scenes/Agent1.unity";
+
     [MenuItem("DroneDetect/Configure Active Scene for DroneFollow")]
     public static void ConfigureActiveScene()
     {
-        var simulatedDrone = Object.FindAnyObjectByType<SimulatedDroneController>();
+        if (EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            Debug.LogError("[DroneFollowSetup] Stop Play mode before configuring DroneFollow.");
+            return;
+        }
+
+        var simulatedDrone = FindTrainingSceneDrone();
         if (simulatedDrone == null)
         {
-            Debug.LogError("[DroneFollowSetup] No active SimulatedDroneController found. Open Assets/Scenes/Agent1.unity first.");
+            if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
+                return;
+
+            EditorSceneManager.OpenScene(TrainingScenePath, OpenSceneMode.Single);
+            simulatedDrone = FindTrainingSceneDrone();
+        }
+
+        if (simulatedDrone == null)
+        {
+            Debug.LogError($"[DroneFollowSetup] No SimulatedDroneController was found in {TrainingScenePath}. Check the scene and drone prefab.");
+            return;
+        }
+        if (!simulatedDrone.gameObject.activeInHierarchy)
+        {
+            Debug.LogError("[DroneFollowSetup] The drone controller exists in Agent1 but its GameObject is inactive. Activate the drone and retry.");
             return;
         }
 
@@ -130,5 +153,21 @@ public static class DroneFollowSetup
         Selection.activeGameObject = droneObject;
 
         Debug.Log($"[DroneFollowSetup] Agent1 configured: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} continuous actions, {actualRateHz:F1} Hz. No child pixel sensors.");
+    }
+
+    static SimulatedDroneController FindTrainingSceneDrone()
+    {
+        Scene scene = SceneManager.GetSceneByPath(TrainingScenePath);
+        if (!scene.IsValid() || !scene.isLoaded)
+            return null;
+
+        foreach (GameObject root in scene.GetRootGameObjects())
+        {
+            var controller = root.GetComponentInChildren<SimulatedDroneController>(true);
+            if (controller != null)
+                return controller;
+        }
+
+        return null;
     }
 }
