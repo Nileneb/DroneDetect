@@ -21,6 +21,7 @@ public static class DroneFollowSetup
     const string GroundPreviewName = "PiP_Ground";
     const string DepthPreviewName = "PiP_Depth";
     const string BoundingBoxOverlayName = "DroneFollowBoundingBoxOverlay";
+    const string BoundingBoxOverlayCanvasName = "DroneFollowBoundingBoxOverlayCanvas";
 
     [MenuItem("DroneDetect/Configure Active Scene for DroneFollow")]
     public static void ConfigureActiveScene()
@@ -55,11 +56,12 @@ public static class DroneFollowSetup
             return;
         }
 
-        // GroundCam looks down at the target area; prefer it over the legacy
-        // forward/depth camera for projecting a person standing on the ground.
+        // Main Camera supplies RGB, detection, the box overlay, and the depth
+        // preview. GroundCam remains a separate downward-looking preview.
+        Camera mainCamera = FindChildCamera(droneObject, "Main Camera");
         Camera groundCamera = FindChildCamera(droneObject, "GroundCam");
-        Camera camera = groundCamera != null
-            ? groundCamera
+        Camera camera = mainCamera != null
+            ? mainCamera
             : legacyAgent.depthCamera != null
                 ? legacyAgent.depthCamera.GetComponent<Camera>()
                 : droneObject.GetComponentInChildren<Camera>(true);
@@ -127,19 +129,22 @@ public static class DroneFollowSetup
 
         if (groundCamera != null)
         {
+            Undo.RecordObject(groundCamera, "Set GroundCam background to white");
+            groundCamera.clearFlags = CameraClearFlags.SolidColor;
+            groundCamera.backgroundColor = Color.white;
+
             RawImage groundPreview = GetRawImage(trainingScene, GroundPreviewName);
             RenderTexture groundTexture = groundPreview != null ? groundPreview.texture as RenderTexture : null;
             if (groundTexture != null)
             {
-                Undo.RecordObject(groundCamera, "Route GroundCam to PiP preview");
                 groundCamera.targetTexture = groundTexture;
                 groundCamera.targetDisplay = 0;
-                EditorUtility.SetDirty(groundCamera);
             }
             else
             {
                 Debug.LogWarning("[DroneFollowSetup] PiP_Ground does not reference a RenderTexture; GroundCam will still be used for projection, but its preview cannot be routed automatically.");
             }
+            EditorUtility.SetDirty(groundCamera);
         }
 
         var controllerAdapter = droneObject.GetComponent<SimulatedDroneFollowControllerAdapter>();
@@ -156,7 +161,32 @@ public static class DroneFollowSetup
         detector.minLatencySeconds = 0.10f;
         detector.maxLatencySeconds = 0.20f;
 
-        ConfigureBoundingBoxOverlay(trainingScene, camera, detector);
+        RawImage depthPreview = GetRawImage(trainingScene, DepthPreviewName);
+        var depthProcessor = camera.GetComponent<DroneDepthCamera>();
+        if (depthProcessor == null)
+            depthProcessor = Undo.AddComponent<DroneDepthCamera>(camera.gameObject);
+        Undo.RecordObject(depthProcessor, "Generate depth preview from Main Camera");
+        depthProcessor.depthPreview = depthPreview;
+        depthProcessor.resolution = 256;
+        depthProcessor.maxVisualizationDistance = 20f;
+        depthProcessor.enabled = true;
+
+        Camera separateDepthCamera = FindChildCamera(droneObject, "DepthCamera");
+        if (separateDepthCamera != null && separateDepthCamera != camera)
+        {
+            Undo.RecordObject(separateDepthCamera, "Disable separate DroneFollow depth camera");
+            separateDepthCamera.enabled = false;
+            DroneDepthCamera separateDepthProcessor = separateDepthCamera.GetComponent<DroneDepthCamera>();
+            if (separateDepthProcessor != null)
+            {
+                Undo.RecordObject(separateDepthProcessor, "Disable separate DroneFollow depth processor");
+                separateDepthProcessor.enabled = false;
+                EditorUtility.SetDirty(separateDepthProcessor);
+            }
+            EditorUtility.SetDirty(separateDepthCamera);
+        }
+
+        ConfigureBoundingBoxOverlay(trainingScene, detector);
 
         var targetMotion = target.GetComponent<SimulatedMovingTarget>();
         if (targetMotion == null)
@@ -199,6 +229,7 @@ public static class DroneFollowSetup
 
         EditorUtility.SetDirty(behavior);
         EditorUtility.SetDirty(detector);
+        EditorUtility.SetDirty(depthProcessor);
         EditorUtility.SetDirty(targetMotion);
         EditorUtility.SetDirty(followAgent);
         EditorUtility.SetDirty(requester);
@@ -206,7 +237,7 @@ public static class DroneFollowSetup
         EditorSceneManager.SaveOpenScenes();
         Selection.activeGameObject = droneObject;
 
-        Debug.Log($"[DroneFollowSetup] Agent1 configured: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} continuous actions + {DroneFollowContract.DiscreteBranchSize} discrete branch, {actualRateHz:F1} Hz; camera={camera.name}; removed {removedCameraSensors} CameraSensorComponent(s). The detector box is shown over the matching PiP preview.");
+        Debug.Log($"[DroneFollowSetup] Agent1 configured: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} continuous actions + {DroneFollowContract.DiscreteBranchSize} discrete branch, {actualRateHz:F1} Hz; Main Camera drives detection, RGB display and depth preview; GroundCam remains downward-facing; separate depth camera disabled; removed {removedCameraSensors} CameraSensorComponent(s).");
     }
 
     static Camera FindChildCamera(GameObject root, string cameraName)
@@ -225,23 +256,25 @@ public static class DroneFollowSetup
         return previewObject != null ? previewObject.GetComponent<RawImage>() : null;
     }
 
-    static void ConfigureBoundingBoxOverlay(Scene scene, Camera camera, SimulatedBoundingBoxDetector detector)
+    static void ConfigureBoundingBoxOverlay(Scene scene, SimulatedBoundingBoxDetector detector)
     {
-        string previewName = camera.name == "GroundCam" ? GroundPreviewName : DepthPreviewName;
-        RawImage preview = GetRawImage(scene, previewName);
-        if (preview == null)
+        GameObject canvasObject = FindNamedObject(scene, BoundingBoxOverlayCanvasName);
+        if (canvasObject == null)
         {
-            Debug.LogWarning($"[DroneFollowSetup] Could not find RawImage '{previewName}'; bounding boxes will still be computed but not drawn in the Game view.");
-            return;
+            canvasObject = new GameObject(
+                BoundingBoxOverlayCanvasName,
+                typeof(RectTransform),
+                typeof(Canvas));
+            Undo.RegisterCreatedObjectUndo(canvasObject, "Create DroneFollow screen overlay");
         }
 
-        Transform existing = preview.transform.Find(BoundingBoxOverlayName);
-        GameObject overlayObject;
-        if (existing != null)
-        {
-            overlayObject = existing.gameObject;
-        }
-        else
+        Canvas canvas = canvasObject.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = 98;
+
+        GameObject overlayObject = FindNamedObject(scene, BoundingBoxOverlayName);
+        if (overlayObject == null)
         {
             overlayObject = new GameObject(
                 BoundingBoxOverlayName,
@@ -249,8 +282,9 @@ public static class DroneFollowSetup
                 typeof(CanvasRenderer),
                 typeof(DroneFollowBoundingBoxOverlay));
             Undo.RegisterCreatedObjectUndo(overlayObject, "Create DroneFollow bounding box overlay");
-            overlayObject.transform.SetParent(preview.transform, false);
         }
+        Undo.RecordObject(overlayObject.transform, "Show bounding box on Main Camera");
+        overlayObject.transform.SetParent(canvasObject.transform, false);
 
         RectTransform overlayRect = overlayObject.GetComponent<RectTransform>();
         overlayRect.anchorMin = Vector2.zero;
@@ -268,6 +302,8 @@ public static class DroneFollowSetup
         overlay.lineThickness = 2.5f;
         overlay.color = new Color(0.18f, 1f, 0.28f, 1f);
         overlay.raycastTarget = false;
+        EditorUtility.SetDirty(canvas);
+        EditorUtility.SetDirty(canvasObject.transform);
         EditorUtility.SetDirty(overlay);
         EditorUtility.SetDirty(overlayRect);
     }

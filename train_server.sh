@@ -17,7 +17,7 @@ Usage:
 With no trainer argument, an interactive menu is shown.
 
 Trainers:
-  follow         DroneFollow PPO (18 observations; no demos required)
+  follow         DroneFollow PPO (19 observations; hybrid actions; no demos required)
   dronecsi       Legacy DroneCSI PPO
   droneshepherd  DroneShepherd PPO + GAIL demos from DB
   wolfcsi        WolfCSI PPO + GAIL demos from DB
@@ -49,7 +49,7 @@ RUN_ID="${2:-${RUN_ID:-}}"
 if [[ -z "$MODE" ]]; then
     cat <<'MENU'
 === DroneDetect ML-Agents Trainer ===
-  1) DroneFollow   - PPO, 18-value vector, no demos
+  1) DroneFollow   - PPO, 19-value vector, hybrid actions, no demos
   2) DroneCSI      - legacy PPO
   3) DroneShepherd - PPO + GAIL demos
   4) WolfCSI       - PPO + GAIL demos
@@ -103,10 +103,17 @@ if [[ ! -f "$CONFIG" ]]; then
     exit 1
 fi
 
-# Verify conda is available in PATH and use the dedicated ML-Agents environment.
+# Load the user's Conda installation when its shell hook is not already on PATH.
+CONDA_SH="${CONDA_SH:-$HOME/miniconda3/etc/profile.d/conda.sh}"
+if ! command -v conda >/dev/null 2>&1 && [[ -r "$CONDA_SH" ]]; then
+    # shellcheck disable=SC1090
+    source "$CONDA_SH"
+fi
+
+# Verify conda is available and use the dedicated ML-Agents environment.
 CONDA_ENV="${CONDA_ENV:-mlagents}"
 if ! command -v conda >/dev/null 2>&1; then
-    echo "conda was not found in PATH. Run: conda config --add channels conda-forge" >&2
+    echo "conda was not found. Add it to PATH or set CONDA_SH to its shell hook." >&2
     exit 1
 fi
 
@@ -175,7 +182,7 @@ echo "Unity trainer port: $BASE_PORT"
 echo "When mlagents-learn is listening, press Play in the matching Unity scene."
 echo ""
 
-conda run -n "$CONDA_ENV" --no-capture-output mlagents-learn "$CONFIG" \
+conda run -n "$CONDA_ENV" --no-capture-output python tools/mlagents_learn_compat.py "$CONFIG" \
     --run-id="$RUN_ID" \
     --base-port="$BASE_PORT" \
     --no-graphics 2>&1 | tee -a "$RUN_ID.log" || {

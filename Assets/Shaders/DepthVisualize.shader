@@ -1,5 +1,10 @@
 Shader "DroneDetect/DepthVisualize"
 {
+    Properties
+    {
+        _MaxDepth ("Maximum Visualization Distance", Float) = 20
+    }
+
     SubShader
     {
         Tags { "RenderType"="Opaque" }
@@ -13,12 +18,14 @@ Shader "DroneDetect/DepthVisualize"
             #include "UnityCG.cginc"
 
             sampler2D _CameraDepthTexture;
+            float _MaxDepth;
 
             fixed4 frag(v2f_img i) : SV_Target
             {
                 float rawDepth = SAMPLE_DEPTH_TEXTURE(_CameraDepthTexture, i.uv);
-                float linearDepth = Linear01Depth(rawDepth);
-                return fixed4(linearDepth, linearDepth, linearDepth, 1.0);
+                float eyeDepth = LinearEyeDepth(rawDepth);
+                float normalizedDepth = saturate(eyeDepth / max(_MaxDepth, 0.1));
+                return fixed4(normalizedDepth, normalizedDepth, normalizedDepth, 1.0);
             }
             ENDCG
         }

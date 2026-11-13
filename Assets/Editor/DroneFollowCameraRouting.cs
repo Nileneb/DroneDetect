@@ -31,7 +31,6 @@ public static class DroneFollowCameraRouting
         GameObject drone = agent.gameObject;
         Camera mainCamera = FindCamera(drone, "Main Camera");
         Camera groundCamera = FindCamera(drone, "GroundCam");
-        Camera depthCamera = FindCamera(drone, "DepthCamera");
         if (mainCamera == null || groundCamera == null)
         {
             Debug.LogError("[DroneFollowCameraRouting] Main Camera and GroundCam are required. No camera roles were reassigned.");
@@ -48,27 +47,20 @@ public static class DroneFollowCameraRouting
         bool groundPreviewReady = RoutePreview(scene, groundCamera, "PiP_Ground", true);
         if (!groundPreviewReady)
             Debug.LogError("[DroneFollowCameraRouting] GroundCam has no PiP_Ground RenderTexture; it will not render into the main display.");
-        bool depthPreviewReady = false;
-        if (depthCamera != null)
-        {
-            depthCamera.gameObject.tag = "Untagged";
-            depthPreviewReady = RoutePreview(scene, depthCamera, "PiP_Depth", false);
-        }
         foreach (Camera camera in drone.GetComponentsInChildren<Camera>(true))
         {
-            if (camera == null || camera == mainCamera || camera == groundCamera || camera == depthCamera)
+            if (camera == null || camera == mainCamera || camera == groundCamera)
                 continue;
             Undo.RecordObject(camera, "Keep secondary camera off primary display");
             camera.targetDisplay = 0;
-            if (camera.targetTexture == null)
-                camera.enabled = false;
+            camera.enabled = false;
             EditorUtility.SetDirty(camera);
         }
         SimulatedBoundingBoxDetector detector = drone.GetComponent<SimulatedBoundingBoxDetector>();
         if (detector != null)
         {
-            Undo.RecordObject(detector, "Use GroundCam for target detection");
-            detector.observationCamera = groundCamera;
+            Undo.RecordObject(detector, "Use Main Camera for target detection");
+            detector.observationCamera = mainCamera;
             EditorUtility.SetDirty(detector);
         }
         else
@@ -85,7 +77,7 @@ public static class DroneFollowCameraRouting
         int removedSensors = RemoveCameraSensors(scene);
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveOpenScenes();
-        Debug.Log("[DroneFollowCameraRouting] Saved roles: Main Camera -> full primary display; GroundCam -> PiP_Ground and detector; DepthCamera -> PiP_Depth. Ground preview=" + groundPreviewReady + ", depth preview=" + depthPreviewReady + ", removed CameraSensorComponent(s)=" + removedSensors + ". Camera rotations were not changed.");
+        Debug.Log("[DroneFollowCameraRouting] Saved roles: Main Camera -> primary RGB display, target detection, screen bounding box and depth preview; downward GroundCam -> PiP_Ground; no separate depth camera. Ground preview=" + groundPreviewReady + ", removed CameraSensorComponent(s)=" + removedSensors + ".");
     }
     static bool RoutePreview(Scene scene, Camera camera, string previewName, bool required)
     {

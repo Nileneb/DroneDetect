@@ -1,21 +1,18 @@
 using UnityEngine;
-using Unity.MLAgents.Sensors;
+using UnityEngine.UI;
 
 /// <summary>
-/// Renders a linear-depth view every N agent steps into a RenderTexture.
-/// Attach to a child GameObject on the drone with a Camera component.
-/// Automatically wires its RenderTexture into a RenderTextureSensorComponent
-/// on the same GameObject (adds the component if missing).
+/// Generates a grayscale depth view from the same camera render used for the
+/// main RGB image. The depth preview is visualization only, not a policy sensor.
 /// </summary>
 [RequireComponent(typeof(Camera))]
 public class DroneDepthCamera : MonoBehaviour
 {
-    [Header("Depth Capture")]
-    [Tooltip("Update depth texture every N agent steps (0 = every frame).")]
-    public int depthUpdateInterval = 5;
-
-    [Tooltip("Resolution of the depth render texture.")]
-    public int resolution = 32;
+    [Header("Depth Preview")]
+    public RawImage depthPreview;
+    [Min(32)] public int resolution = 256;
+    [Min(0.1f)] public float maxVisualizationDistance = 20f;
+    [Min(0)] public int updateIntervalSteps = 5;
 
     public RenderTexture DepthRT { get; private set; }
 
@@ -28,7 +25,10 @@ public class DroneDepthCamera : MonoBehaviour
         _cam = GetComponent<Camera>();
         _cam.depthTextureMode = DepthTextureMode.Depth;
 
-        DepthRT = new RenderTexture(resolution, resolution, 0, RenderTextureFormat.ARGB32);
+        float aspect = _cam.aspect > 0f ? _cam.aspect : 1f;
+        int width = Mathf.Max(32, resolution);
+        int height = Mathf.Max(32, Mathf.RoundToInt(width / aspect));
+        DepthRT = new RenderTexture(width, height, 0, RenderTextureFormat.ARGB32);
         DepthRT.name = "DroneDepthRT";
         DepthRT.Create();
 
@@ -36,20 +36,13 @@ public class DroneDepthCamera : MonoBehaviour
         if (shader == null)
             Debug.LogError("[DroneDepthCamera] DepthVisualize shader not found. Check Assets/Shaders/.");
         else
+        {
             _depthMat = new Material(shader);
+            _depthMat.SetFloat("_MaxDepth", maxVisualizationDistance);
+        }
 
-        WireUpSensor();
-    }
-
-    void WireUpSensor()
-    {
-        var sensor = GetComponent<RenderTextureSensorComponent>();
-        if (sensor == null)
-            sensor = gameObject.AddComponent<RenderTextureSensorComponent>();
-
-        sensor.RenderTexture = DepthRT;
-        sensor.SensorName = "DepthSensor";
-        sensor.Grayscale = true;
+        if (depthPreview != null)
+            depthPreview.texture = DepthRT;
     }
 
     void OnDestroy()
@@ -58,12 +51,11 @@ public class DroneDepthCamera : MonoBehaviour
         if (_depthMat != null) Destroy(_depthMat);
     }
 
-    /// <summary>Called by DroneAgent.OnActionReceived to throttle captures.</summary>
     public void NotifyStep()
     {
-        if (depthUpdateInterval <= 0) return;
+        if (updateIntervalSteps <= 0) return;
         _stepCounter++;
-        _cam.enabled = (_stepCounter % depthUpdateInterval == 0);
+        _cam.enabled = _stepCounter % updateIntervalSteps == 0;
     }
 
     void OnRenderImage(RenderTexture src, RenderTexture dst)

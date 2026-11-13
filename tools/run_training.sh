@@ -28,7 +28,7 @@ case "$PHASE" in
     RUN_ID="DroneCSI_$(date +%Y%m%d_%H%M)"
     echo "=== Phase 1 (DroneCSI) — run_id=$RUN_ID ==="
     cd "$PROJECT"
-    mlagents-learn config/DroneCSI.yaml \
+    python tools/mlagents_learn_compat.py config/DroneCSI.yaml \
       --run-id="$RUN_ID" \
       --time-scale=10 \
       --no-graphics \
@@ -50,7 +50,7 @@ case "$PHASE" in
       fi
     fi
 
-    mlagents-learn config/DroneShepherd.yaml \
+    python tools/mlagents_learn_compat.py config/DroneShepherd.yaml \
       --run-id="$RUN_ID" \
       --time-scale=10 \
       --no-graphics \
@@ -60,12 +60,11 @@ case "$PHASE" in
 
   phasefollow)
     RUN_ID="DroneFollow_$(date +%Y%m%d_%H%M)"
-    echo "=== DroneFollow (18 observations, 4 actions) — run_id=$RUN_ID ==="
+    echo "=== DroneFollow (19 observations, 4 continuous + 1 discrete branch) — run_id=$RUN_ID ==="
     echo "No automatic DroneCSI warm-start: its 14-input ground-truth policy is not shape/semantics compatible."
     cd "$PROJECT"
-    mlagents-learn config/DroneFollow.yaml \
+    python tools/mlagents_learn_compat.py config/DroneFollow.yaml \
       --run-id="$RUN_ID" \
-      --time-scale=10 \
       --no-graphics \
       "$@"
     ;;

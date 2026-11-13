@@ -34,6 +34,7 @@ public class DroneControlPanel : MonoBehaviour
 
     DroneMode _mode = DroneMode.Play;
     float _blinkTimer;
+    bool _droneFollowMode;
 
     // ── Persistent listener entry points ────────────────────────────────────
     public void OnClickPlay() => ApplyMode(DroneMode.Play);
@@ -58,7 +59,7 @@ public class DroneControlPanel : MonoBehaviour
     void Update()
     {
         if (recIndicator == null) return;
-        if (_mode == DroneMode.Play)
+        if (_mode == DroneMode.Play && !_droneFollowMode)
         {
             _blinkTimer += Time.deltaTime;
             recIndicator.gameObject.SetActive(_blinkTimer % 1f < 0.5f);
@@ -92,9 +93,9 @@ public class DroneControlPanel : MonoBehaviour
         var droneAgent       = droneGo.GetComponent<DroneAgent>();
         var shepherdAgent    = droneGo.GetComponent<ShepherdDroneAgent>();
         var droneFollowAgent = droneGo.GetComponent<DroneFollowAgent>();
-        bool droneFollowMode = !shepherdMode && droneFollowAgent != null && droneFollowAgent.enabled;
+        _droneFollowMode = !shepherdMode && droneFollowAgent != null && droneFollowAgent.enabled;
 
-        if (droneFollowMode)
+        if (_droneFollowMode)
         {
             // DroneFollow is an independent training mode: never let the legacy agent start too.
             if (droneAgent != null)    droneAgent.enabled = false;
@@ -107,7 +108,7 @@ public class DroneControlPanel : MonoBehaviour
             if (droneFollowAgent != null) droneFollowAgent.enabled = false;
         }
 
-        string sceneMode = shepherdMode ? "Shepherd" : droneFollowMode ? "DroneFollow" : "Parcours";
+        string sceneMode = shepherdMode ? "Shepherd" : _droneFollowMode ? "DroneFollow" : "Parcours";
         Debug.Log($"[DroneControlPanel] SceneMode={sceneMode} " +
                   $"droneFollowAgent={droneFollowAgent?.enabled} " +
                   $"droneAgent={droneAgent?.enabled} shepherdAgent={shepherdAgent?.enabled}");
@@ -125,8 +126,9 @@ public class DroneControlPanel : MonoBehaviour
         {
             case DroneMode.Play:
                 if (bp != null) bp.BehaviorType = BehaviorType.Default;
-                if (dr != null) dr.Record = true;
-                SetLabel("🎮 Spielen + ⏺ REC", ColPlay);
+                if (dr != null) dr.Record = !_droneFollowMode;
+                SetLabel(_droneFollowMode ? "DroneFollow: Trainer erforderlich" : "🎮 Spielen + ⏺ REC",
+                    _droneFollowMode ? ColAI : ColPlay);
                 Highlight(btnPlay, ColPlay);
                 Highlight(btnAI,   ColInactive);
                 _blinkTimer = 0f;
@@ -159,7 +161,7 @@ public class DroneControlPanel : MonoBehaviour
         if (btnPlay != null) btnPlay.gameObject.SetActive(_mode != DroneMode.Play);
         if (btnAI   != null) btnAI.gameObject.SetActive(_mode != DroneMode.AIFly);
 
-        Debug.Log($"[DroneControlPanel] {mode} | bp={bp != null} model={bp?.Model != null} dr={dr?.Record}");
+        Debug.Log($"[DroneControlPanel] {mode} | droneFollow={_droneFollowMode} bp={bp != null} model={bp?.Model != null} dr={dr?.Record}");
     }
 
     void SetLabel(string text, Color col)

@@ -2,8 +2,8 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Renders the delayed detector box over the camera RawImage preview. This is
-/// visualization only; policy observations remain the four-value contract.
+/// Renders the delayed Main Camera detection box on a screen-space overlay.
+/// This is visualization only; policy observations remain the four-value contract.
 /// </summary>
 public sealed class DroneFollowBoundingBoxOverlay : MaskableGraphic
 {
