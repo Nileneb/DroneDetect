@@ -5,11 +5,12 @@ using UnityEngine.SceneManagement;
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
+using Unity.MLAgents.Sensors;
 
 /// <summary>
 /// One-click wiring for the existing Agent1 training scene. It keeps DroneCSI
 /// on the component, disables it for this scene, and enables DroneFollow with
-/// a projected animated PrefabBene target and no child pixel sensors.
+/// a projected animated PrefabBene target and no policy image sensors.
 /// </summary>
 public static class DroneFollowSetup
 {
@@ -118,6 +119,12 @@ public static class DroneFollowSetup
             return;
         }
 
+        // Drone.prefab has two CameraSensorComponents on the same GameObject as
+        // the Agent. UseChildSensors=false does not exclude those root sensors.
+        // Remove only ML-Agents sensor components; keep Unity Camera components
+        // alive for bounding-box projection in SimulatedBoundingBoxDetector.
+        int removedCameraSensors = RemoveCameraSensorComponents(droneObject);
+
         var controllerAdapter = droneObject.GetComponent<SimulatedDroneFollowControllerAdapter>();
         if (controllerAdapter == null)
             controllerAdapter = Undo.AddComponent<SimulatedDroneFollowControllerAdapter>(droneObject);
@@ -151,7 +158,7 @@ public static class DroneFollowSetup
         Undo.RecordObject(behavior, "Set DroneFollow behavior contract");
         behavior.BehaviorName = DroneFollowContract.BehaviorName;
         behavior.BehaviorType = BehaviorType.Default;
-        behavior.UseChildSensors = false; // Excludes the existing depth RenderTexture sensor.
+        behavior.UseChildSensors = false;
 
         // BrainParameters is a read-only property, but returns the mutable
         // reference object. Mutate that object in place to align its spec with
@@ -181,7 +188,21 @@ public static class DroneFollowSetup
         EditorSceneManager.SaveOpenScenes();
         Selection.activeGameObject = droneObject;
 
-        Debug.Log($"[DroneFollowSetup] Agent1 configured with {TargetPrefabPath}: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} continuous actions, {actualRateHz:F1} Hz. No child pixel sensors.");
+        Debug.Log($"[DroneFollowSetup] Agent1 configured with {TargetPrefabPath}: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} continuous actions, {actualRateHz:F1} Hz. Removed {removedCameraSensors} ML-Agents camera sensor component(s); Unity cameras remain available for box projection.");
+    }
+
+    static int RemoveCameraSensorComponents(GameObject root)
+    {
+        int removed = 0;
+        var sensorComponents = root.GetComponentsInChildren<CameraSensorComponent>(true);
+        foreach (CameraSensorComponent sensor in sensorComponents)
+        {
+            if (sensor == null) continue;
+            Undo.DestroyObjectImmediate(sensor);
+            removed++;
+        }
+
+        return removed;
     }
 
     static GameObject FindNamedObject(Scene scene, string objectName)
