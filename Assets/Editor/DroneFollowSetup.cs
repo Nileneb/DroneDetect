@@ -101,13 +101,13 @@ public static class DroneFollowSetup
         behavior.BehaviorType = BehaviorType.Default;
         behavior.UseChildSensors = false; // Excludes the existing depth RenderTexture sensor.
 
-        // Keep the serialized ML-Agents contract exactly aligned with CollectObservations
-        // and OnActionReceived. The old DroneCSI scene settings are 14/4.
+        // BrainParameters is a read-only property, but returns the mutable
+        // reference object. Mutate that object in place to align its spec with
+        // CollectObservations and OnActionReceived.
         var brainParameters = behavior.BrainParameters;
         brainParameters.VectorObservationSize = DroneFollowContract.ObservationSize;
         brainParameters.NumStackedVectorObservations = 1;
         brainParameters.ActionSpec = ActionSpec.MakeContinuous(DroneFollowContract.ActionSize);
-        behavior.BrainParameters = brainParameters;
 
         var requester = droneObject.GetComponent<DecisionRequester>();
         if (requester == null)
