@@ -1,4 +1,4 @@
-# DroneFollow PPO with behavioral cloning and GAIL from the scripted route demo.
+# DroneFollow PPO with behavioral cloning and GAIL from the current manual demo.
 # The current policy uses 19 vector observations, an 84x84 grayscale depth
 # observation, four continuous actions, and one discrete action branch.
 behaviors:

@@ -332,13 +332,19 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
         Vector3 hVel = new Vector3(_rb.linearVelocity.x, 0f, _rb.linearVelocity.z);
         _rb.AddForce(-hVel * hoverDamping * _rb.mass, ForceMode.Force);
 
-        // Nur landen wenn tatsaechlich nahe am Boden UND langsam genug
-        if (transform.position.y < 0.15f && Mathf.Abs(verticalVel) < 0.5f)
+        // The Rigidbody origin can remain above the floor because the drone
+        // collider is offset from it. Test the collider's bottom, not its origin.
+        Collider rootCollider = GetComponent<Collider>();
+        float groundClearance = rootCollider != null
+            ? rootCollider.bounds.min.y
+            : transform.position.y;
+        if (groundClearance < 0.15f && Mathf.Abs(verticalVel) < 0.5f)
         {
             _state = DroneState.Landed;
             _stateTimer = 0f;
             _rb.linearVelocity = Vector3.zero;
             _rb.angularVelocity = Vector3.zero;
+            LogControllerState($"Landing complete, groundClearance={groundClearance:F3}");
         }
     }
 

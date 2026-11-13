@@ -8,12 +8,12 @@ using UnityEngine;
 public sealed class SimulatedMovingTarget : MonoBehaviour
 {
     [Header("Motion")]
-    [Min(0f)] public float roamRadius = 4f;
-    [Min(0f)] public float minSpeed = 0.35f;
-    [Min(0f)] public float maxSpeed = 1.25f;
-    [Range(0f, 1f)] public float stopProbability = 0.25f;
-    [Min(0f)] public float minStopSeconds = 0.4f;
-    [Min(0f)] public float maxStopSeconds = 1.5f;
+    [Min(0f)] public float roamRadius = 12f;
+    [Min(0f)] public float minSpeed = 0.75f;
+    [Min(0f)] public float maxSpeed = 2f;
+    [Range(0f, 1f)] public float stopProbability = 0.05f;
+    [Min(0f)] public float minStopSeconds = 0.2f;
+    [Min(0f)] public float maxStopSeconds = 0.8f;
 
     [Header("Scale randomization")]
     [Min(0.1f)] public float minScaleMultiplier = 0.8f;
@@ -22,6 +22,7 @@ public sealed class SimulatedMovingTarget : MonoBehaviour
     Vector3 _startPosition;
     Vector3 _startScale;
     Vector3 _destination;
+    Vector2 _previousDirection;
     float _speed;
     float _pauseRemaining;
     float _baseRoamRadius;
@@ -72,10 +73,10 @@ public sealed class SimulatedMovingTarget : MonoBehaviour
     {
         CaptureStartPose();
         float progress = Mathf.Clamp01(stage / 4f);
-        roamRadius = Mathf.Lerp(0.1f, _baseRoamRadius, progress);
-        minSpeed = Mathf.Lerp(0.1f, _baseMinSpeed, progress);
-        maxSpeed = Mathf.Lerp(0.2f, _baseMaxSpeed, progress);
-        stopProbability = Mathf.Lerp(0.65f, _baseStopProbability, progress);
+        roamRadius = Mathf.Lerp(5f, _baseRoamRadius, progress);
+        minSpeed = Mathf.Lerp(0.5f, _baseMinSpeed, progress);
+        maxSpeed = Mathf.Lerp(1.25f, _baseMaxSpeed, progress);
+        stopProbability = Mathf.Lerp(0.1f, _baseStopProbability, progress);
         minScaleMultiplier = Mathf.Lerp(1f, _baseMinScaleMultiplier, progress);
         maxScaleMultiplier = Mathf.Lerp(1f, _baseMaxScaleMultiplier, progress);
     }
@@ -86,6 +87,7 @@ public sealed class SimulatedMovingTarget : MonoBehaviour
         transform.position = _startPosition;
         transform.localScale = _startScale * Random.Range(minScaleMultiplier, maxScaleMultiplier);
         _pauseRemaining = 0f;
+        _previousDirection = Vector2.zero;
         ChooseNextLeg();
     }
 
@@ -100,11 +102,33 @@ public sealed class SimulatedMovingTarget : MonoBehaviour
             return;
         }
 
-        Vector2 offset = Random.insideUnitCircle * roamRadius;
+        Vector2 currentOffset = new Vector2(
+            transform.position.x - _startPosition.x,
+            transform.position.z - _startPosition.z);
+        Vector2 offset = Vector2.zero;
+        Vector2 direction = Vector2.zero;
+        for (int attempt = 0; attempt < 8; attempt++)
+        {
+            Vector2 radialDirection = Random.insideUnitCircle;
+            if (radialDirection.sqrMagnitude < 0.01f)
+                radialDirection = Vector2.right;
+            else
+                radialDirection.Normalize();
+            float radius = Random.Range(roamRadius * 0.45f, roamRadius);
+            offset = radialDirection * radius;
+            direction = offset - currentOffset;
+            if (direction.sqrMagnitude > 2.25f &&
+                (_previousDirection.sqrMagnitude < 0.01f ||
+                 Vector2.Angle(_previousDirection, direction) >= 60f))
+                break;
+        }
+
         _destination = new Vector3(
             _startPosition.x + offset.x,
             _startPosition.y,
             _startPosition.z + offset.y);
+        if (direction.sqrMagnitude > 0.01f)
+            _previousDirection = direction.normalized;
         _speed = Random.Range(Mathf.Min(minSpeed, maxSpeed), Mathf.Max(minSpeed, maxSpeed));
     }
 }

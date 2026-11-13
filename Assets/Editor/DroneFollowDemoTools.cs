@@ -16,7 +16,7 @@ public static class DroneFollowDemoTools
     const string RecorderStepsKey = "DroneFollowDemo.RecorderSteps";
     const string RecorderNameKey = "DroneFollowDemo.RecorderName";
     const string RecorderDirectoryKey = "DroneFollowDemo.RecorderDirectory";
-    const int DemoStepLimit = 5000;
+    const string RecordingNameKey = "DroneFollowDemo.RecordingName";
     const string DemoName = "DroneFollowDemo";
     static readonly string DemoDirectory = Path.GetFullPath(
         Path.Combine(Application.dataPath, "..", "results", "demonstrations"));
@@ -26,8 +26,8 @@ public static class DroneFollowDemoTools
         EditorApplication.playModeStateChanged += OnPlayModeStateChanged;
     }
 
-    [MenuItem("DroneDetect/DroneFollow/Record Scripted Demonstration (5000 steps)")]
-    static void RecordScriptedDemonstration()
+    [MenuItem("DroneDetect/DroneFollow/Record Manual Demonstration")]
+    static void RecordManualDemonstration()
     {
         if (EditorApplication.isPlaying)
         {
@@ -62,17 +62,24 @@ public static class DroneFollowDemoTools
         SessionState.SetInt(RecorderStepsKey, recorder.NumStepsToRecord);
         SessionState.SetString(RecorderNameKey, recorder.DemonstrationName);
         SessionState.SetString(RecorderDirectoryKey, recorder.DemonstrationDirectory);
+        string recordingName;
+        do
+        {
+            recordingName = "DF" + System.Guid.NewGuid().ToString("N").Substring(0, 8);
+        }
+        while (File.Exists(Path.Combine(DemoDirectory, recordingName + ".demo")));
+        SessionState.SetString(RecordingNameKey, recordingName);
         SessionState.SetBool(RestoreKey, true);
 
         behavior.BehaviorType = BehaviorType.HeuristicOnly;
         recorder.enabled = true;
         recorder.Record = true;
-        recorder.NumStepsToRecord = DemoStepLimit;
-        recorder.DemonstrationName = DemoName;
+        recorder.NumStepsToRecord = 0;
+        recorder.DemonstrationName = recordingName;
         recorder.DemonstrationDirectory = DemoDirectory;
 
         SessionState.SetBool(PendingKey, true);
-        Debug.Log($"[DroneFollowDemo] Starting a temporary HeuristicOnly session. The scene settings will be restored after Play mode. Recording to '{DemoDirectory}'.");
+        Debug.Log($"[DroneFollowDemo] Starting manual recording in HeuristicOnly mode. Fly with WASD/arrows, Space/Left Shift, and Q/E; press G to land. Stop Play mode to publish the recording as '{DemoName}.demo' in '{DemoDirectory}'.");
         EditorApplication.isPlaying = true;
     }
 
@@ -107,23 +114,24 @@ public static class DroneFollowDemoTools
         }
 
         DemonstrationRecorder recorder = agent.GetComponent<DemonstrationRecorder>();
+        BehaviorParameters behavior = agent.GetComponent<BehaviorParameters>();
         DroneFollowDemoRoute route = agent.followTarget.GetComponent<DroneFollowDemoRoute>();
-        if (route == null)
-            route = agent.followTarget.gameObject.AddComponent<DroneFollowDemoRoute>();
-
-        if (recorder == null || !route.Begin(agent))
+        if (route != null)
+            route.enabled = false;
+        if (recorder == null || behavior == null)
         {
-            Debug.LogError("[DroneFollowDemo] Could not initialize the recorder and NavMesh target route.");
+            Debug.LogError("[DroneFollowDemo] DemonstrationRecorder or BehaviorParameters is missing.");
             EditorApplication.isPlaying = false;
             return;
         }
 
+        behavior.BehaviorType = BehaviorType.HeuristicOnly;
         recorder.enabled = true;
         recorder.Record = true;
-        recorder.NumStepsToRecord = DemoStepLimit;
-        recorder.DemonstrationName = DemoName;
+        recorder.NumStepsToRecord = 0;
+        recorder.DemonstrationName = SessionState.GetString(RecordingNameKey, string.Empty);
         recorder.DemonstrationDirectory = DemoDirectory;
-        Debug.Log($"[DroneFollowDemo] Recording {DemoStepLimit} decisions. PPO is stopped; the DroneFollow heuristic is controlling the drone.");
+        Debug.Log("[DroneFollowDemo] Manual control is active. Recording continues until Play mode is stopped.");
     }
 
     static void RestoreSceneSettings()
@@ -141,7 +149,74 @@ public static class DroneFollowDemoTools
             recorder.DemonstrationDirectory = SessionState.GetString(RecorderDirectoryKey, string.Empty);
         }
 
+        string recordingName = SessionState.GetString(RecordingNameKey, string.Empty);
+        if (!string.IsNullOrEmpty(recordingName))
+            PublishRecording(recordingName);
+        SessionState.SetString(RecordingNameKey, string.Empty);
         SessionState.SetBool(RestoreKey, false);
         Debug.Log("[DroneFollowDemo] Restored the scene's saved PPO and recorder settings.");
+    }
+
+    static void PublishRecording(string recordingName)
+    {
+        string recordedPath = Path.Combine(DemoDirectory, recordingName + ".demo");
+        string publishedPath = Path.Combine(DemoDirectory, DemoName + ".demo");
+        string stagingPath = publishedPath + ".new";
+        string backupPath = publishedPath + ".bak";
+        if (!File.Exists(recordedPath))
+        {
+            Debug.LogError($"[DroneFollowDemo] Recording was not created at '{recordedPath}'. The previous training demo was left unchanged.");
+            return;
+        }
+
+        try
+        {
+            long recordedLength = new FileInfo(recordedPath).Length;
+            if (recordedLength == 0)
+            {
+                Debug.LogError($"[DroneFollowDemo] Recording at '{recordedPath}' is empty. The previous training demo was left unchanged.");
+                return;
+            }
+
+            File.Copy(recordedPath, stagingPath, true);
+            if (new FileInfo(stagingPath).Length != recordedLength)
+                throw new IOException("The staged demonstration size did not match the recorded file.");
+
+            if (File.Exists(publishedPath))
+            {
+                if (File.Exists(backupPath))
+                    File.Delete(backupPath);
+                File.Replace(stagingPath, publishedPath, backupPath);
+            }
+            else
+                File.Move(stagingPath, publishedPath);
+        }
+        catch (IOException exception)
+        {
+            Debug.LogError($"[DroneFollowDemo] Could not replace the training demonstration. The new recording is preserved at '{recordedPath}'. Details: {exception.Message}");
+            return;
+        }
+        catch (System.UnauthorizedAccessException exception)
+        {
+            Debug.LogError($"[DroneFollowDemo] Permission denied while publishing the training demonstration. The new recording is preserved at '{recordedPath}'. Details: {exception.Message}");
+            return;
+        }
+
+        try
+        {
+            if (File.Exists(backupPath))
+                File.Delete(backupPath);
+            File.Delete(recordedPath);
+        }
+        catch (IOException exception)
+        {
+            Debug.LogWarning($"[DroneFollowDemo] Published the training demo, but temporary-file cleanup failed: {exception.Message}");
+        }
+        catch (System.UnauthorizedAccessException exception)
+        {
+            Debug.LogWarning($"[DroneFollowDemo] Published the training demo, but temporary-file cleanup was denied: {exception.Message}");
+        }
+
+        Debug.Log($"[DroneFollowDemo] Published the manual recording to '{publishedPath}'. Both BC and GAIL training configs use this path.");
     }
 }

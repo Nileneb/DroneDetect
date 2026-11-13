@@ -232,6 +232,12 @@ public static class DroneFollowSetup
         if (targetMotion == null)
             targetMotion = Undo.AddComponent<SimulatedMovingTarget>(target.gameObject);
         Undo.RecordObject(targetMotion, "Configure moving target");
+        targetMotion.roamRadius = 12f;
+        targetMotion.minSpeed = 0.75f;
+        targetMotion.maxSpeed = 2f;
+        targetMotion.stopProbability = 0.05f;
+        targetMotion.minStopSeconds = 0.2f;
+        targetMotion.maxStopSeconds = 0.8f;
 
         var followAgent = droneObject.GetComponent<DroneFollowAgent>();
         if (followAgent == null)
@@ -241,6 +247,7 @@ public static class DroneFollowSetup
         followAgent.desiredAltitude = 1.5f;
         followAgent.desiredDistanceMin = 2f;
         followAgent.desiredDistanceMax = 3f;
+        followAgent.safeLandingMinimumFlightFraction = 1f;
         followAgent.enabled = true;
 
         // DecisionRequester binds to the first Agent returned by GetComponent.

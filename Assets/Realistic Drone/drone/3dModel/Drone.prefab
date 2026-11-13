@@ -3568,7 +3568,7 @@ MonoBehaviour:
   lostDetectionPenalty: 0.005
   smoothActionPenalty: 0.0005
   flightCompletionReward: 0.75
-  safeLandingMinimumFlightFraction: 0.8
+  safeLandingMinimumFlightFraction: 1
   earlyLandingPenalty: 0.02
   groundTag: Ground
   wallTag: Wall

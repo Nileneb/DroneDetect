@@ -22,7 +22,7 @@ public sealed class DroneFollowAgent : Agent
     [Min(0f)] public float lostDetectionPenalty = 0.005f;
     [Min(0f)] public float smoothActionPenalty = 0.0005f;
     [Min(0f)] public float flightCompletionReward = 0.75f;
-    [Range(0f, 1f)] public float safeLandingMinimumFlightFraction = 0.8f;
+    [Range(0f, 1f)] public float safeLandingMinimumFlightFraction = 1f;
     [Min(0f)] public float earlyLandingPenalty = 0.02f;
 
     [Header("Crash damage")]
@@ -49,6 +49,7 @@ public sealed class DroneFollowAgent : Agent
     bool _flightHasStarted;
     bool _landingRequested;
     bool _hasPreviousFollowState;
+    float _nextActionDiagnosticTime;
     float _damage;
     float _lastImpactTime = -Mathf.Infinity;
     float _previousDistanceError;
@@ -114,7 +115,7 @@ public sealed class DroneFollowAgent : Agent
         _curriculumStage = Mathf.Clamp(
             Mathf.RoundToInt(Academy.Instance.EnvironmentParameters.GetWithDefault("follow_stage", 0f)),
             0, 4);
-        float[] flightDurationsSeconds = { 12f, 20f, 30f, 45f, 60f };
+        float[] flightDurationsSeconds = { 60f, 90f, 120f, 180f, 240f };
         _episodeDecisionLimit = Mathf.RoundToInt(
             flightDurationsSeconds[_curriculumStage] * DroneFollowContract.DecisionRateHz);
 
@@ -207,6 +208,18 @@ public sealed class DroneFollowAgent : Agent
                 _actionSizeWarningLogged = true;
             }
             return;
+        }
+
+        if (Time.time >= _nextActionDiagnosticTime)
+        {
+            _nextActionDiagnosticTime = Time.time + 2f;
+            var diagnosticActions = actions.ContinuousActions;
+            Debug.Log(
+                $"[DroneFollowAgent] Action received: state={_controller.State}, " +
+                $"continuous=({diagnosticActions[0]:F2}, {diagnosticActions[1]:F2}, " +
+                $"{diagnosticActions[2]:F2}, {diagnosticActions[3]:F2}), " +
+                $"land={actions.DiscreteActions[0]}, position={transform.position}.",
+                this);
         }
 
         if (_controller.State == DroneState.Landed)
@@ -327,54 +340,20 @@ public sealed class DroneFollowAgent : Agent
     {
         var ca = actionsOut.ContinuousActions;
         var da = actionsOut.DiscreteActions;
-        da[0] = 0;
+        da[0] = Input.GetKeyDown(KeyCode.G)
+            ? DroneFollowContract.LandAction
+            : 0;
         if (ca.Length != DroneFollowContract.ActionSize || _controller == null)
             return;
 
-        NavdataPacket nav = _controller.Navdata;
-        float altitudeError = nav != null ? desiredAltitude - nav.altitude : 0f;
-        DroneTargetDetection detection = _detector != null
-            ? _detector.Current
-            : DroneTargetDetection.None(Time.time);
-
-        if (!detection.Visible)
-        {
-            ca[0] = 0f;
-            ca[1] = 0f;
-            ca[2] = Mathf.Clamp(altitudeError * 0.75f, -0.5f, 0.5f);
-            ca[3] = (_episodeFlightDecisions / 20) % 2 == 0 ? 0.25f : -0.25f;
-            return;
-        }
-
-        float desiredBoxHeight = CalculateDesiredDetectionHeight();
-        ca[0] = Mathf.Clamp((desiredBoxHeight - detection.Height) * 2f, -0.5f, 0.5f);
-        ca[1] = Mathf.Clamp(-detection.CenterX * 0.7f, -0.5f, 0.5f);
-        ca[2] = Mathf.Clamp(altitudeError * 0.75f + detection.CenterY * 0.2f, -0.5f, 0.5f);
-        ca[3] = Mathf.Clamp(detection.CenterX * 0.8f, -0.5f, 0.5f);
-    }
-
-    float CalculateDesiredDetectionHeight()
-    {
-        var simulatedDetector = _detector as SimulatedBoundingBoxDetector;
-        Camera camera = simulatedDetector != null
-            ? simulatedDetector.observationCamera
-            : GetComponentInChildren<Camera>();
-        if (camera == null || followTarget == null)
-            return 0.25f;
-
-        Renderer[] renderers = followTarget.GetComponentsInChildren<Renderer>();
-        if (renderers.Length == 0)
-            return 0.25f;
-
-        Bounds targetBounds = renderers[0].bounds;
-        for (int i = 1; i < renderers.Length; i++)
-            targetBounds.Encapsulate(renderers[i].bounds);
-
-        float targetHeight = targetBounds.size.y;
-        float desiredDistance = (desiredDistanceMin + desiredDistanceMax) * 0.5f;
-        float frustumHeight = 2f * desiredDistance *
-            Mathf.Tan(camera.fieldOfView * 0.5f * Mathf.Deg2Rad);
-        return Mathf.Clamp(targetHeight / Mathf.Max(0.01f, frustumHeight), 0.05f, 0.85f);
+        ca[0] = Input.GetAxisRaw("Vertical");
+        ca[1] = -Input.GetAxisRaw("Horizontal");
+        ca[2] = Input.GetKey(KeyCode.Space)
+            ? 1f
+            : Input.GetKey(KeyCode.LeftShift) ? -1f : 0f;
+        ca[3] = Input.GetKey(KeyCode.Q)
+            ? -1f
+            : Input.GetKey(KeyCode.E) ? 1f : 0f;
     }
 
     void OnCollisionEnter(Collision collision)

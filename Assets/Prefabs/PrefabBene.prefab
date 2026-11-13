@@ -81,11 +81,11 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f8d2f7db6cd24d43a9d8bb5dd0e30004, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SimulatedMovingTarget
-  roamRadius: 4
-  minSpeed: 0.35
-  maxSpeed: 1.25
-  stopProbability: 0.25
-  minStopSeconds: 0.4
-  maxStopSeconds: 1.5
+  roamRadius: 12
+  minSpeed: 0.75
+  maxSpeed: 2
+  stopProbability: 0.05
+  minStopSeconds: 0.2
+  maxStopSeconds: 0.8
   minScaleMultiplier: 0.8
   maxScaleMultiplier: 1.2

@@ -39,6 +39,7 @@ public class DroneControlPanel : MonoBehaviour
     BehaviorParameters _behaviorParameters;
     DecisionRequester _decisionRequester;
     DroneFollowAgent _droneFollowAgent;
+    DemonstrationRecorder _demonstrationRecorder;
     string _lastDroneFollowStatus;
 
     // ── Persistent listener entry points ────────────────────────────────────
@@ -93,29 +94,71 @@ public class DroneControlPanel : MonoBehaviour
         foreach (var s in sheep) s.gameObject.SetActive(shepherdMode);
         if (targetsGo != null) targetsGo.SetActive(!shepherdMode);
 
-        // Drohne: richtige Agent-Komponente aktivieren
-        var sdc = FindAnyObjectByType<SimulatedDroneController>();
+        // Prefer the controller that actually owns the enabled DroneFollow agent.
+        // A scene may contain additional inactive/legacy drones.
+        SimulatedDroneController sdc = null;
+        DroneFollowAgent selectedFollowAgent = null;
+        if (!shepherdMode)
+        {
+            foreach (var candidate in FindObjectsByType<DroneFollowAgent>())
+            {
+                if (!candidate.enabled) continue;
+                var candidateController = candidate.GetComponent<SimulatedDroneController>();
+                if (candidateController == null) continue;
+                selectedFollowAgent = candidate;
+                sdc = candidateController;
+                break;
+            }
+        }
+
+        if (sdc == null)
+        {
+            foreach (var candidate in FindObjectsByType<SimulatedDroneController>())
+            {
+                bool hasExpectedAgent = shepherdMode
+                    ? candidate.GetComponent<ShepherdDroneAgent>() != null
+                    : candidate.GetComponent<DroneAgent>() != null;
+                if (!hasExpectedAgent) continue;
+                sdc = candidate;
+                break;
+            }
+        }
+
         if (sdc == null) return;
         var droneGo = sdc.gameObject;
 
-        var droneAgent       = droneGo.GetComponent<DroneAgent>();
-        var shepherdAgent    = droneGo.GetComponent<ShepherdDroneAgent>();
-        var droneFollowAgent = droneGo.GetComponent<DroneFollowAgent>();
+        var droneAgent = droneGo.GetComponent<DroneAgent>();
+        var shepherdAgent = droneGo.GetComponent<ShepherdDroneAgent>();
+        var droneFollowAgent = selectedFollowAgent != null
+            ? selectedFollowAgent
+            : droneGo.GetComponent<DroneFollowAgent>();
         _droneFollowAgent = droneFollowAgent;
         _decisionRequester = droneGo.GetComponent<DecisionRequester>();
+        _behaviorParameters = droneGo.GetComponent<BehaviorParameters>();
+        _demonstrationRecorder = droneGo.GetComponent<DemonstrationRecorder>();
         _droneFollowMode = !shepherdMode && droneFollowAgent != null && droneFollowAgent.enabled;
 
         if (_droneFollowMode)
         {
-            // DroneFollow is an independent training mode: never let the legacy agent start too.
-            if (droneAgent != null)    droneAgent.enabled = false;
-            if (shepherdAgent != null) shepherdAgent.enabled = false;
+            // Legacy agents on any scene drone must not start in DroneFollow mode.
+            foreach (var legacy in FindObjectsByType<DroneAgent>(
+                         FindObjectsInactive.Include))
+                legacy.enabled = false;
+            foreach (var legacy in FindObjectsByType<ShepherdDroneAgent>(
+                         FindObjectsInactive.Include))
+                legacy.enabled = false;
         }
         else
         {
-            if (droneAgent != null)       droneAgent.enabled = !shepherdMode;
-            if (shepherdAgent != null)    shepherdAgent.enabled =  shepherdMode;
-            if (droneFollowAgent != null) droneFollowAgent.enabled = false;
+            foreach (var agent in FindObjectsByType<DroneAgent>(
+                         FindObjectsInactive.Include))
+                agent.enabled = !shepherdMode && agent.gameObject == droneGo;
+            foreach (var agent in FindObjectsByType<ShepherdDroneAgent>(
+                         FindObjectsInactive.Include))
+                agent.enabled = shepherdMode && agent.gameObject == droneGo;
+            foreach (var agent in FindObjectsByType<DroneFollowAgent>(
+                         FindObjectsInactive.Include))
+                agent.enabled = agent == droneFollowAgent && _droneFollowMode;
         }
 
         string sceneMode = shepherdMode ? "Shepherd" : _droneFollowMode ? "DroneFollow" : "Parcours";
@@ -132,8 +175,8 @@ public class DroneControlPanel : MonoBehaviour
     void ApplyMode(DroneMode mode)
     {
         _mode = mode;
-        var bp = _behaviorParameters = FindAnyObjectByType<BehaviorParameters>();
-        var dr = FindAnyObjectByType<DemonstrationRecorder>();
+        var bp = _behaviorParameters ??= FindAnyObjectByType<BehaviorParameters>();
+        var dr = _demonstrationRecorder ??= FindAnyObjectByType<DemonstrationRecorder>();
 
         switch (mode)
         {
