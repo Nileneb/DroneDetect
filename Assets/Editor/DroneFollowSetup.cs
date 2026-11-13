@@ -9,11 +9,13 @@ using Unity.MLAgents.Policies;
 /// <summary>
 /// One-click wiring for the existing Agent1 training scene. It keeps DroneCSI
 /// on the component, disables it for this scene, and enables DroneFollow with
-/// a projected moving-target proxy and no child pixel sensors.
+/// a projected animated PrefabBene target and no child pixel sensors.
 /// </summary>
 public static class DroneFollowSetup
 {
     const string TrainingScenePath = "Assets/Scenes/Agent1.unity";
+    const string TargetPrefabPath = "Assets/Prefabs/PrefabBene.prefab";
+    const string TargetInstanceName = "DroneFollowTarget";
 
     [MenuItem("DroneDetect/Configure Active Scene for DroneFollow")]
     public static void ConfigureActiveScene()
@@ -52,24 +54,6 @@ public static class DroneFollowSetup
             return;
         }
 
-        Transform target = null;
-        if (legacyAgent.targets != null)
-        {
-            foreach (GameObject candidate in legacyAgent.targets)
-            {
-                if (candidate != null)
-                {
-                    target = candidate.transform;
-                    break;
-                }
-            }
-        }
-        if (target == null)
-        {
-            Debug.LogError("[DroneFollowSetup] No non-null target is assigned in DroneAgent.targets.");
-            return;
-        }
-
         Camera camera = legacyAgent.depthCamera != null
             ? legacyAgent.depthCamera.GetComponent<Camera>()
             : simulatedDrone.GetComponentInChildren<Camera>(true);
@@ -80,7 +64,52 @@ public static class DroneFollowSetup
         }
 
         GameObject droneObject = simulatedDrone.gameObject;
+        Scene trainingScene = droneObject.scene;
         Undo.RecordObject(droneObject, "Configure DroneFollow");
+
+        // Use the animated character prefab rather than a waypoint sphere. Reuse
+        // the named instance when the setup menu is run a second time.
+        GameObject targetObject = FindNamedObject(trainingScene, TargetInstanceName);
+        if (targetObject == null)
+        {
+            GameObject targetPrefab = AssetDatabase.LoadAssetAtPath<GameObject>(TargetPrefabPath);
+            if (targetPrefab == null)
+            {
+                Debug.LogError($"[DroneFollowSetup] Target prefab not found at {TargetPrefabPath}.");
+                return;
+            }
+
+            targetObject = PrefabUtility.InstantiatePrefab(targetPrefab, trainingScene) as GameObject;
+            if (targetObject == null)
+            {
+                Debug.LogError($"[DroneFollowSetup] Could not instantiate target prefab {TargetPrefabPath}.");
+                return;
+            }
+            Undo.RegisterCreatedObjectUndo(targetObject, "Create DroneFollow target");
+            targetObject.name = TargetInstanceName;
+
+            Vector3 startPosition = droneObject.transform.position + droneObject.transform.forward * 4f;
+            startPosition.y = 0f; // Agent1 ground plane is at world Y=0.
+            targetObject.transform.SetPositionAndRotation(startPosition, Quaternion.identity);
+        }
+
+        Transform target = targetObject.transform;
+        if (target.GetComponentInChildren<Renderer>(true) == null)
+        {
+            Debug.LogError($"[DroneFollowSetup] {TargetPrefabPath} has no Renderer in its hierarchy; detector projection cannot produce a box.");
+            return;
+        }
+
+        // The old DroneCSI waypoint markers are not part of the new task.
+        if (legacyAgent.targets != null)
+        {
+            foreach (GameObject waypoint in legacyAgent.targets)
+            {
+                if (waypoint == null || waypoint == targetObject) continue;
+                Undo.RecordObject(waypoint, "Hide DroneCSI waypoint");
+                waypoint.SetActive(false);
+            }
+        }
 
         var behavior = droneObject.GetComponent<BehaviorParameters>();
         if (behavior == null)
@@ -148,11 +177,31 @@ public static class DroneFollowSetup
         EditorUtility.SetDirty(targetMotion);
         EditorUtility.SetDirty(followAgent);
         EditorUtility.SetDirty(requester);
-        EditorSceneManager.MarkSceneDirty(simulatedDrone.gameObject.scene);
+        EditorSceneManager.MarkSceneDirty(trainingScene);
         EditorSceneManager.SaveOpenScenes();
         Selection.activeGameObject = droneObject;
 
-        Debug.Log($"[DroneFollowSetup] Agent1 configured: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} continuous actions, {actualRateHz:F1} Hz. No child pixel sensors.");
+        Debug.Log($"[DroneFollowSetup] Agent1 configured with {TargetPrefabPath}: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} continuous actions, {actualRateHz:F1} Hz. No child pixel sensors.");
+    }
+
+    static GameObject FindNamedObject(Scene scene, string objectName)
+    {
+        if (!scene.IsValid() || !scene.isLoaded)
+            return null;
+
+        foreach (GameObject root in scene.GetRootGameObjects())
+        {
+            if (root.name == objectName)
+                return root;
+
+            foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (child.name == objectName)
+                    return child.gameObject;
+            }
+        }
+
+        return null;
     }
 
     static SimulatedDroneController FindTrainingSceneDrone()
