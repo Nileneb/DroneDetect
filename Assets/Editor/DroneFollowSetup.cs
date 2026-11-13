@@ -2,6 +2,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using Unity.MLAgents;
+using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
 
 /// <summary>
@@ -75,7 +76,7 @@ public static class DroneFollowSetup
         Undo.RecordObject(detector, "Configure simulated detector");
         detector.observationCamera = camera;
         detector.target = target;
-        detector.sampleRateHz = 10f;
+        detector.sampleRateHz = DroneFollowContract.DecisionRateHz;
         detector.minLatencySeconds = 0.10f;
         detector.maxLatencySeconds = 0.20f;
 
@@ -95,16 +96,29 @@ public static class DroneFollowSetup
         followAgent.enabled = true;
 
         legacyAgent.enabled = false;
-        behavior.BehaviorName = "DroneFollow";
+        Undo.RecordObject(behavior, "Set DroneFollow behavior contract");
+        behavior.BehaviorName = DroneFollowContract.BehaviorName;
         behavior.BehaviorType = BehaviorType.Default;
         behavior.UseChildSensors = false; // Excludes the existing depth RenderTexture sensor.
+
+        // Keep the serialized ML-Agents contract exactly aligned with CollectObservations
+        // and OnActionReceived. The old DroneCSI scene settings are 14/4.
+        var brainParameters = behavior.BrainParameters;
+        brainParameters.VectorObservationSize = DroneFollowContract.ObservationSize;
+        brainParameters.NumStackedVectorObservations = 1;
+        brainParameters.ActionSpec = ActionSpec.MakeContinuous(DroneFollowContract.ActionSize);
+        behavior.BrainParameters = brainParameters;
 
         var requester = droneObject.GetComponent<DecisionRequester>();
         if (requester == null)
             requester = Undo.AddComponent<DecisionRequester>(droneObject);
         Undo.RecordObject(requester, "Set DroneFollow decision rate");
-        requester.DecisionPeriod = 5; // 10 Hz at the project's 50 Hz fixed-step rate.
+        float desiredPeriodSeconds = 1f / DroneFollowContract.DecisionRateHz;
+        requester.DecisionPeriod = Mathf.Max(1, Mathf.RoundToInt(desiredPeriodSeconds / Time.fixedDeltaTime));
         requester.TakeActionsBetweenDecisions = true;
+        float actualRateHz = 1f / (requester.DecisionPeriod * Time.fixedDeltaTime);
+        if (Mathf.Abs(actualRateHz - DroneFollowContract.DecisionRateHz) > 0.1f)
+            Debug.LogWarning($"[DroneFollowSetup] Fixed timestep gives {actualRateHz:F2} Hz, not the requested {DroneFollowContract.DecisionRateHz:F1} Hz.");
 
         EditorUtility.SetDirty(behavior);
         EditorUtility.SetDirty(detector);
@@ -115,6 +129,6 @@ public static class DroneFollowSetup
         EditorSceneManager.SaveOpenScenes();
         Selection.activeGameObject = droneObject;
 
-        Debug.Log("[DroneFollowSetup] Agent1 is configured for DroneFollow. Existing waypoint sphere is the moving projected proxy; replace it with a humanoid/GLB later.");
+        Debug.Log($"[DroneFollowSetup] Agent1 configured: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} continuous actions, {actualRateHz:F1} Hz. No child pixel sensors.");
     }
 }
