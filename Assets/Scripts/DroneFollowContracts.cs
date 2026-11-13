@@ -1,5 +1,26 @@
 using UnityEngine;
 
+/// <summary>Versioned DroneFollow policy contract shared by sim and hardware.</summary>
+public static class DroneFollowContract
+{
+    public const string BehaviorName = "DroneFollow";
+
+    public const int ProprioceptionSize = 10;
+    public const int DetectionSize = 4;
+    public const int PreviousActionSize = 4;
+    public const int ObservationSize = ProprioceptionSize + DetectionSize + PreviousActionSize;
+
+    public const int ActionSize = 4;
+    public const float DecisionRateHz = 10f;
+
+    /// <summary>
+    /// At the project's default 50 Hz fixed timestep this produces 10 policy
+    /// decisions per simulated second. Scene setup derives the period from the
+    /// actual Time.fixedDeltaTime and warns if it cannot represent 10 Hz.
+    /// </summary>
+    public const int DecisionPeriodAt50Hz = 5;
+}
+
 /// <summary>
 /// Shared sensor/action contract for DroneFollow. A real hardware controller can
 /// implement this alongside IDroneController without exposing simulator objects.
