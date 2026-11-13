@@ -8,7 +8,6 @@ using Unity.MLAgents.Sensors;
 /// 4 previously sent actions. No pixels or world-space target direction enter
 /// CollectObservations. Ground truth is used only for training reward shaping.
 /// </summary>
-[RequireComponent(typeof(SimulatedDroneController))]
 public sealed class DroneFollowAgent : Agent
 {
     [Header("Follow task")]
