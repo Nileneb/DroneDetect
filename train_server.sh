@@ -171,8 +171,7 @@ echo ""
 
 mlagents-learn "$CONFIG" \
     --run-id="$RUN_ID" \
-    --base-port="$BASE_PORT" \
-    --no-graphics 2>&1 | tee -a "$RUN_ID.log" || {
+    --base-port="$BASE_PORT" 2>&1 | tee -a "$RUN_ID.log" || {
     echo "mlagents-learn failed:"
     cat "$RUN_ID.log" 2>/dev/null || true
     exit 1
