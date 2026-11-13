@@ -41,6 +41,7 @@ public sealed class DroneFollowAgent : Agent
 
     IDroneFollowController _controller;
     IDroneTargetDetectionSource _detector;
+    DroneDepthCamera _depthCamera;
     Vector3 _spawnPosition;
     Quaternion _spawnRotation;
     Vector4 _previousAction;
@@ -79,7 +80,7 @@ public sealed class DroneFollowAgent : Agent
             Debug.LogError("[DroneFollowAgent] Follow target is not assigned.", this);
 
         RenderTextureSensorComponent depthSensor = GetComponent<RenderTextureSensorComponent>();
-        DroneDepthCamera depthCamera = GetComponentInChildren<DroneDepthCamera>(true);
+        _depthCamera = GetComponentInChildren<DroneDepthCamera>(true);
         if (depthSensor == null ||
             depthSensor.RenderTexture == null ||
             depthSensor.RenderTexture.width != DroneFollowContract.DepthObservationWidth ||
@@ -90,7 +91,7 @@ public sealed class DroneFollowAgent : Agent
                 $"[DroneFollowAgent] Expected a {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight} RenderTextureSensorComponent on the Agent. Re-run DroneDetect > Configure Active Scene for DroneFollow.",
                 this);
         }
-        else if (depthCamera == null || depthCamera.outputTexture != depthSensor.RenderTexture)
+        else if (_depthCamera == null || _depthCamera.outputTexture != depthSensor.RenderTexture)
         {
             Debug.LogError(
                 "[DroneFollowAgent] The depth sensor is not connected to the Main Camera depth output. Re-run DroneDetect > Configure Active Scene for DroneFollow.",
@@ -154,6 +155,8 @@ public sealed class DroneFollowAgent : Agent
 
     public override void CollectObservations(VectorSensor sensor)
     {
+        _depthCamera?.RequestObservationRender();
+
         NavdataPacket nav = _controller != null ? _controller.Navdata : null;
         Vector3 gyro = _controller != null ? _controller.BodyAngularVelocityRadSec : Vector3.zero;
 

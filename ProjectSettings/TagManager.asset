@@ -9,6 +9,7 @@ TagManager:
   - Ground
   - Sheep
   - Drone
+  - Obstacle
   layers:
   - Default
   - TransparentFX
@@ -18,6 +19,7 @@ TagManager:
   - UI
   - 
   - 
+  - NavMeshGeometry
   - 
   - 
   - 
@@ -48,3 +50,4 @@ TagManager:
     locked: 0
   m_RenderingLayers:
   - Default
+  m_MigratedRenderPipelines: []

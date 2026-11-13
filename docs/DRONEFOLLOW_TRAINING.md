@@ -65,3 +65,33 @@ to connect; if Play was already active before the trainer started, stop and
 restart Play after the trainer is listening. Do not start the manual-demo
 recording menu during training: it deliberately switches to `HeuristicOnly`
 and requires the PPO trainer to be stopped.
+
+## Vegetation collision and NavMesh setup
+
+With training and Play mode stopped, select
+**DroneDetect > DroneFollow > Optimize Vegetation Prefabs and Bake NavMesh**.
+The tool replaces tagged vegetation instances that use MeshColliders with
+shared prefabs under `Assets/Prefabs/DroneFollow/Vegetation`. Visual GLB meshes
+are kept intact; collision is changed to a small capsule for tall vegetation
+and a box for low vegetation. These simple colliders reduce per-instance
+triangle collision work. The tool creates the `NavMeshGeometry` user layer,
+places the Ground collider and vegetation proxies on it, then bakes a
+`NavMeshSurface` from physics colliders on that layer.
+
+`ProjectSettings/ProjectSettings.asset` enables Unity's collision-mesh
+prebaking for any MeshColliders that remain elsewhere in the project. This is
+an import/build-time tradeoff: it can reduce runtime mesh cooking but increases
+stored data and memory use. The current simulated target still moves through
+`SimulatedMovingTarget`; baking the NavMesh does not by itself make that target
+follow NavMesh paths.
+
+The ML-Agents RenderTexture sensor currently reads pixels synchronously from
+the GPU into a CPU `Texture2D` before sending observations to the trainer.
+In the latest capture (8m 22s, 1,331 observations), sensor writes took 63.5s
+in total (47.7ms per observation). The visible Main Camera must remain enabled
+for the Game view. Observation-driven camera rendering only applies to a
+separate offscreen sensor camera with a `targetTexture`; the current shared
+Main Camera is not throttled. GPU inference would not remove the required CPU
+observation transfer to the Python trainer. Compare a fresh ML-Agents timer and
+Unity CPU Profiler capture before replacing the sensor path with asynchronous
+readback, which would also introduce observation latency.

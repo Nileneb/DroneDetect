@@ -20,12 +20,20 @@ public class DroneDepthCamera : MonoBehaviour
     Camera _cam;
     Material _depthMat;
     bool _ownsDepthRT;
+    bool _renderOnObservationRequest;
     int _stepCounter;
 
     void Awake()
     {
         _cam = GetComponent<Camera>();
         _cam.depthTextureMode = DepthTextureMode.Depth;
+        _renderOnObservationRequest =
+            GetComponentInParent<DroneFollowAgent>() != null &&
+            _cam.targetTexture != null;
+        if (_renderOnObservationRequest)
+            _cam.enabled = false;
+        else
+            _cam.enabled = true;
 
         DepthRT = outputTexture;
         if (DepthRT == null)
@@ -70,6 +78,12 @@ public class DroneDepthCamera : MonoBehaviour
             _cam.enabled = updateIntervalSteps <= 0 || _stepCounter % updateIntervalSteps == 0;
     }
 
+    public void RequestObservationRender()
+    {
+        if (_renderOnObservationRequest && _cam != null)
+            _cam.enabled = true;
+    }
+
     void OnRenderImage(RenderTexture src, RenderTexture dst)
     {
         if (_depthMat != null && DepthRT != null)
@@ -87,5 +101,7 @@ public class DroneDepthCamera : MonoBehaviour
         }
 
         Graphics.Blit(src, dst);
+        if (_renderOnObservationRequest)
+            _cam.enabled = false;
     }
 }
