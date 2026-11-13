@@ -26,10 +26,11 @@ public sealed class DroneFollowAgent : Agent
     Quaternion _spawnRotation;
     Vector4 _previousAction;
     bool _ending;
+    bool _actionSizeWarningLogged;
 
     public override void Initialize()
     {
-        MaxStep = 600; // 60 seconds at the 10 Hz decision rate.
+        MaxStep = Mathf.RoundToInt(60f * DroneFollowContract.DecisionRateHz);
         _spawnPosition = transform.position;
         _spawnRotation = transform.rotation;
 
@@ -111,7 +112,16 @@ public sealed class DroneFollowAgent : Agent
 
     public override void OnActionReceived(ActionBuffers actions)
     {
-        if (_ending || _controller == null || actions.ContinuousActions.Length < 4) return;
+        if (_ending || _controller == null) return;
+        if (actions.ContinuousActions.Length != DroneFollowContract.ActionSize)
+        {
+            if (!_actionSizeWarningLogged)
+            {
+                Debug.LogError($"[DroneFollowAgent] Expected {DroneFollowContract.ActionSize} continuous actions, got {actions.ContinuousActions.Length}. Re-run DroneDetect > Configure Active Scene for DroneFollow.", this);
+                _actionSizeWarningLogged = true;
+            }
+            return;
+        }
 
         Vector4 previousAction = _previousAction;
         var ca = actions.ContinuousActions;
