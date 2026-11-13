@@ -4318,10 +4318,6 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 337876630466620919, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
-      propertyPath: depthCamera
-      value: 
-      objectReference: {fileID: 0}
-    - target: {fileID: 337876630466620919, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
       propertyPath: 'targets.Array.data[0]'
       value: 
       objectReference: {fileID: 42215755}
@@ -4349,26 +4345,6 @@ PrefabInstance:
       propertyPath: depthPreview
       value: 
       objectReference: {fileID: 2067925196}
-    - target: {fileID: 9031044211559987791, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
-      propertyPath: m_ClearFlags
-      value: 2
-      objectReference: {fileID: 0}
-    - target: {fileID: 9031044211559987791, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
-      propertyPath: m_BackGroundColor.a
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 9031044211559987791, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
-      propertyPath: m_BackGroundColor.b
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 9031044211559987791, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
-      propertyPath: m_BackGroundColor.g
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 9031044211559987791, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
-      propertyPath: m_BackGroundColor.r
-      value: 1
-      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []

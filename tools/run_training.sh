@@ -11,7 +11,8 @@
 # For phasefollow, open Agent1.unity and run DroneDetect > Configure Active Scene for DroneFollow.
 set -euo pipefail
 
-PROJECT=/home/nileneb/DroneDetect
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT="$(dirname "$SCRIPT_DIR")"
 CONDA_ENV=mlagents
 
 # Activate conda env
@@ -65,6 +66,7 @@ case "$PHASE" in
     cd "$PROJECT"
     python tools/mlagents_learn_compat.py config/DroneFollow.yaml \
       --run-id="$RUN_ID" \
+      --base-port=5004 \
       --no-graphics \
       "$@"
     ;;

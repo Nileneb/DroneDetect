@@ -226,11 +226,9 @@ public sealed class DroneFollowAgent : Agent
     {
         var ca = actionsOut.ContinuousActions;
         var da = actionsOut.DiscreteActions;
-        da[0] = Input.GetKey(KeyCode.G) ? DroneFollowContract.LandAction : 0;
-        ca[0] = Input.GetAxis("Vertical");
-        ca[1] = -Input.GetAxis("Horizontal"); // Positive means left in the contract.
-        ca[2] = Input.GetKey(KeyCode.Space) ? 1f : Input.GetKey(KeyCode.LeftShift) ? -1f : 0f;
-        ca[3] = Input.GetKey(KeyCode.E) ? 1f : Input.GetKey(KeyCode.Q) ? -1f : 0f;
+        da[0] = 0;
+        for (int i = 0; i < ca.Length; i++)
+            ca[i] = 0f;
     }
 
     void OnCollisionEnter(Collision collision)

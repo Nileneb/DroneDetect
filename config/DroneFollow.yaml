@@ -23,6 +23,14 @@ behaviors:
     summary_freq: 10000
     keep_checkpoints: 10
 
+env_settings:
+  base_port: 5004
+
 # No automatic --initialize-from: DroneFollow has 19 observations and a hybrid
 # action space; the existing DroneCSI checkpoint used 14 observations and
 # ground-truth target data.
+
+# Keep editor training at real time so accelerated physics does not starve
+# the Unity Editor's ML-Agents step/response loop.
+engine_settings:
+  time_scale: 1

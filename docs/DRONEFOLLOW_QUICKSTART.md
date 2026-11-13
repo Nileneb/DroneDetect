@@ -15,9 +15,9 @@ Stop Play mode after configuring the scene and wait for Unity to finish compilin
 ./tools/run_training.sh phasefollow
 ```
 
-Wait until the terminal says it is listening on port 5004, then enter Play mode in Unity. Confirm the trainer prints `Connected to Unity environment` and `Connected new brain: DroneFollow?team=0`. The launcher uses a local compatibility check based on parsed protocol-version components, avoiding the failing legacy `StrictVersion.version` access in the installed ML-Agents package. The Run button does not start the trainer. The DroneFollow Play panel does not record demonstrations.
+`DroneFollow.yaml` and the launcher explicitly use `base_port: 5004`, matching the Unity Editor's ML-Agents port. Wait until the terminal says it is listening on port 5004, then enter Play mode in Unity. Confirm the trainer prints `Connected to Unity environment` and `Connected new brain: DroneFollow?team=0`. The Unity HUD's `Trainer-Handshake aktiv (Schritte offen)` confirms only that the ML-Agents communicator initialized; it does not prove that training steps are progressing. Check the trainer's `Step` output and TensorBoard before considering training active. `BehaviorType.Default` sends actions from the connected trainer to the agent; if no trainer is connected, DroneFollow uses neutral actions rather than reading keyboard input. The launcher uses a local compatibility check based on parsed protocol-version components, avoiding the failing legacy `StrictVersion.version` access in the installed ML-Agents package. The Run button does not start the trainer. The DroneFollow Play panel does not record demonstrations.
 
-The run uses `config/DroneFollow.yaml` and writes a new `DroneFollow_YYYYMMDD_HHMM` run. It does not auto-load DroneCSI: the new policy has 19 observations and hybrid actions, while the old DroneCSI policy has 14 observations and uses ground-truth target inputs.
+The run uses `config/DroneFollow.yaml` with `time_scale: 1` for reliable editor stepping, and writes a new `DroneFollow_YYYYMMDD_HHMM` run. It does not auto-load DroneCSI: the new policy has 19 observations and hybrid actions, while the old DroneCSI policy has 14 observations and uses ground-truth target inputs.
 
 ## What this first slice tests
 

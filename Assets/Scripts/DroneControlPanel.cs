@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.UI;
+using Unity.MLAgents;
 using Unity.MLAgents.Policies;
 using Unity.MLAgents.Demonstrations;
 
@@ -35,6 +36,8 @@ public class DroneControlPanel : MonoBehaviour
     DroneMode _mode = DroneMode.Play;
     float _blinkTimer;
     bool _droneFollowMode;
+    BehaviorParameters _behaviorParameters;
+    string _lastDroneFollowStatus;
 
     // ── Persistent listener entry points ────────────────────────────────────
     public void OnClickPlay() => ApplyMode(DroneMode.Play);
@@ -58,6 +61,9 @@ public class DroneControlPanel : MonoBehaviour
 
     void Update()
     {
+        if (_droneFollowMode && _mode == DroneMode.Play)
+            UpdateDroneFollowStatus();
+
         if (recIndicator == null) return;
         if (_mode == DroneMode.Play && !_droneFollowMode)
         {
@@ -119,7 +125,7 @@ public class DroneControlPanel : MonoBehaviour
     void ApplyMode(DroneMode mode)
     {
         _mode = mode;
-        var bp = FindAnyObjectByType<BehaviorParameters>();
+        var bp = _behaviorParameters = FindAnyObjectByType<BehaviorParameters>();
         var dr = FindAnyObjectByType<DemonstrationRecorder>();
 
         switch (mode)
@@ -127,8 +133,10 @@ public class DroneControlPanel : MonoBehaviour
             case DroneMode.Play:
                 if (bp != null) bp.BehaviorType = BehaviorType.Default;
                 if (dr != null) dr.Record = !_droneFollowMode;
-                SetLabel(_droneFollowMode ? "DroneFollow: Trainer erforderlich" : "🎮 Spielen + ⏺ REC",
-                    _droneFollowMode ? ColAI : ColPlay);
+                if (_droneFollowMode)
+                    UpdateDroneFollowStatus();
+                else
+                    SetLabel("🎮 Spielen + ⏺ REC", ColPlay);
                 Highlight(btnPlay, ColPlay);
                 Highlight(btnAI,   ColInactive);
                 _blinkTimer = 0f;
@@ -162,6 +170,43 @@ public class DroneControlPanel : MonoBehaviour
         if (btnAI   != null) btnAI.gameObject.SetActive(_mode != DroneMode.AIFly);
 
         Debug.Log($"[DroneControlPanel] {mode} | droneFollow={_droneFollowMode} bp={bp != null} model={bp?.Model != null} dr={dr?.Record}");
+    }
+
+    void UpdateDroneFollowStatus()
+    {
+        string status;
+        Color color;
+
+        if (_behaviorParameters == null)
+        {
+            status = "DroneFollow: BehaviorParameters fehlt";
+            color = ColWarn;
+        }
+        else if (_behaviorParameters.IsInHeuristicMode())
+        {
+            status = "DroneFollow: Kein Trainer - Drohne wartet";
+            color = ColWarn;
+        }
+        else if (Academy.IsInitialized && Academy.Instance.IsCommunicatorOn)
+        {
+            status = "DroneFollow: Trainer-Handshake aktiv (Schritte offen)";
+            color = ColAI;
+        }
+        else if (_behaviorParameters.Model != null)
+        {
+            status = "DroneFollow: Modell-Inferenz";
+            color = ColAI;
+        }
+        else
+        {
+            status = "DroneFollow: Policy wird initialisiert";
+            color = ColWarn;
+        }
+
+        if (status == _lastDroneFollowStatus) return;
+        _lastDroneFollowStatus = status;
+        SetLabel(status, color);
+        Debug.Log($"[DroneControlPanel] {status}");
     }
 
     void SetLabel(string text, Color col)
