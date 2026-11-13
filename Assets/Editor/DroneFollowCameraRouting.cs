@@ -1,4 +1,7 @@
+#if false
+
 ```csharp
+#endif
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -170,4 +173,7 @@ public static class DroneFollowCameraRouting
         return null;
     }
 }
+#if false
 ```
+
+#endif
