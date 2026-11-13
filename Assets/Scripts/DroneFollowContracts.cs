@@ -8,9 +8,13 @@ public static class DroneFollowContract
     public const int ProprioceptionSize = 10;
     public const int DetectionSize = 4;
     public const int PreviousActionSize = 4;
-    public const int ObservationSize = ProprioceptionSize + DetectionSize + PreviousActionSize;
+    public const int DamageSize = 1;
+    public const int ObservationSize = ProprioceptionSize + DetectionSize + PreviousActionSize + DamageSize;
 
     public const int ActionSize = 4;
+    public const int DiscreteBranchSize = 1;
+    public const int DiscreteActionCount = 2;
+    public const int LandAction = 1;
     public const float DecisionRateHz = 10f;
 
     /// <summary>

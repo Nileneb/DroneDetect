@@ -130,7 +130,7 @@
       "dependencies": {}
     },
     "com.unity.ml-agents": {
-      "version": "4.1.0",
+      "version": "4.2.0",
       "depth": 0,
       "source": "registry",
       "dependencies": {

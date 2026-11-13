@@ -4,8 +4,8 @@ using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Sensors;
 
 /// <summary>
-/// DroneFollow policy: 10 flight-state values, 4 detector-box values, and the
-/// 4 previously sent actions. No pixels or world-space target direction enter
+/// DroneFollow policy: flight state, detector box, previous commands, and
+/// accumulated damage. No pixels or world-space target direction enter
 /// CollectObservations. Ground truth is used only for training reward shaping.
 /// </summary>
 public sealed class DroneFollowAgent : Agent
@@ -20,6 +20,19 @@ public sealed class DroneFollowAgent : Agent
     public float centeringRewardWeight = 0.01f;
     public float smoothActionPenalty = 0.002f;
 
+    [Header("Crash damage")]
+    public string groundTag = "Ground";
+    public string wallTag = "Wall";
+    [Min(0f)] public float safeImpactSpeed = 0.5f;
+    [Min(0.1f)] public float severeImpactSpeed = 4f;
+    [Range(0f, 1f)] public float maxDamagePerImpact = 0.25f;
+    [Range(0f, 1f)] public float terminalDamage = 0.85f;
+    [Min(0f)] public float crashPenalty = 0.25f;
+    [Min(0f)] public float terminalCrashPenalty = 1f;
+    [Range(0f, 1f)] public float minimumControlAuthority = 0.4f;
+    [Min(0f)] public float impactCooldownSeconds = 0.5f;
+    [Min(0f)] public float safeLandingReward = 0.1f;
+
     IDroneFollowController _controller;
     IDroneTargetDetectionSource _detector;
     Vector3 _spawnPosition;
@@ -27,6 +40,10 @@ public sealed class DroneFollowAgent : Agent
     Vector4 _previousAction;
     bool _ending;
     bool _actionSizeWarningLogged;
+    bool _flightHasStarted;
+    bool _landingRequested;
+    float _damage;
+    float _lastImpactTime = -Mathf.Infinity;
 
     public override void Initialize()
     {
@@ -51,6 +68,10 @@ public sealed class DroneFollowAgent : Agent
     public override void OnEpisodeBegin()
     {
         _ending = false;
+        _flightHasStarted = false;
+        _landingRequested = false;
+        _damage = 0f;
+        _lastImpactTime = -Mathf.Infinity;
         _previousAction = Vector4.zero;
         _detector?.ResetDetection();
 
@@ -108,34 +129,51 @@ public sealed class DroneFollowAgent : Agent
         sensor.AddObservation(_previousAction.y);
         sensor.AddObservation(_previousAction.z);
         sensor.AddObservation(_previousAction.w);
+        sensor.AddObservation(_damage);
     }
 
     public override void OnActionReceived(ActionBuffers actions)
     {
         if (_ending || _controller == null) return;
-        if (actions.ContinuousActions.Length != DroneFollowContract.ActionSize)
+        if (actions.ContinuousActions.Length != DroneFollowContract.ActionSize ||
+            actions.DiscreteActions.Length != DroneFollowContract.DiscreteBranchSize)
         {
             if (!_actionSizeWarningLogged)
             {
-                Debug.LogError($"[DroneFollowAgent] Expected {DroneFollowContract.ActionSize} continuous actions, got {actions.ContinuousActions.Length}. Re-run DroneDetect > Configure Active Scene for DroneFollow.", this);
+                Debug.LogError($"[DroneFollowAgent] Expected {DroneFollowContract.ActionSize} continuous actions and {DroneFollowContract.DiscreteBranchSize} discrete branch, got {actions.ContinuousActions.Length} and {actions.DiscreteActions.Length}. Re-run DroneDetect > Configure Active Scene for DroneFollow.", this);
                 _actionSizeWarningLogged = true;
             }
             return;
         }
 
-        Vector4 previousAction = _previousAction;
-        var ca = actions.ContinuousActions;
-        float forward = Mathf.Clamp(ca[0], -1f, 1f);
-        float left = Mathf.Clamp(ca[1], -1f, 1f);
-        float up = Mathf.Clamp(ca[2], -1f, 1f);
-        float turn = Mathf.Clamp(ca[3], -1f, 1f);
-
         if (_controller.State == DroneState.Landed)
         {
-            _controller.Takeoff();
+            if (_landingRequested)
+                FinishSafeLanding();
+            else
+            {
+                _controller.Takeoff();
+                _previousAction = Vector4.zero;
+            }
+            return;
+        }
+
+        if (actions.DiscreteActions[0] == DroneFollowContract.LandAction &&
+            (_controller.State == DroneState.Hovering || _controller.State == DroneState.Flying))
+        {
+            _controller.Land();
+            _landingRequested = true;
             _previousAction = Vector4.zero;
             return;
         }
+
+        Vector4 previousAction = _previousAction;
+        var ca = actions.ContinuousActions;
+        float controlAuthority = Mathf.Lerp(1f, minimumControlAuthority, _damage);
+        float forward = Mathf.Clamp(ca[0], -1f, 1f) * controlAuthority;
+        float left = Mathf.Clamp(ca[1], -1f, 1f) * controlAuthority;
+        float up = Mathf.Clamp(ca[2], -1f, 1f) * controlAuthority;
+        float turn = Mathf.Clamp(ca[3], -1f, 1f) * controlAuthority;
 
         if (_controller.State == DroneState.Hovering || _controller.State == DroneState.Flying)
         {
@@ -187,6 +225,8 @@ public sealed class DroneFollowAgent : Agent
     public override void Heuristic(in ActionBuffers actionsOut)
     {
         var ca = actionsOut.ContinuousActions;
+        var da = actionsOut.DiscreteActions;
+        da[0] = Input.GetKey(KeyCode.G) ? DroneFollowContract.LandAction : 0;
         ca[0] = Input.GetAxis("Vertical");
         ca[1] = -Input.GetAxis("Horizontal"); // Positive means left in the contract.
         ca[2] = Input.GetKey(KeyCode.Space) ? 1f : Input.GetKey(KeyCode.LeftShift) ? -1f : 0f;
@@ -195,21 +235,64 @@ public sealed class DroneFollowAgent : Agent
 
     void OnCollisionEnter(Collision collision)
     {
-        if (_ending || collision == null) return;
-        string hitTag = collision.gameObject.tag;
-        if (hitTag == "Wall" || hitTag == "Ground")
-        {
-            _ending = true;
-            AddReward(-1f);
-            EndEpisode();
-        }
+        if (_ending || collision == null || !_flightHasStarted || _landingRequested ||
+            _controller == null || _controller.State == DroneState.Landing ||
+            _controller.State == DroneState.Landed)
+            return;
+
+        bool isGround = !string.IsNullOrEmpty(groundTag) && collision.gameObject.CompareTag(groundTag);
+        bool isWall = !string.IsNullOrEmpty(wallTag) && collision.gameObject.CompareTag(wallTag);
+        if (!isGround && !isWall) return;
+
+        ApplyImpactDamage(collision.relativeVelocity.magnitude, collision.gameObject.name);
     }
 
     void FixedUpdate()
     {
-        if (_ending || _controller == null || _controller.State != DroneState.Emergency) return;
+        if (_ending || _controller == null) return;
+
+        if (_controller.State == DroneState.Hovering || _controller.State == DroneState.Flying)
+            _flightHasStarted = true;
+        else if (_controller.State == DroneState.Landing)
+            _landingRequested = true;
+
+        if (_controller.State == DroneState.Emergency)
+        {
+            _ending = true;
+            AddReward(-terminalCrashPenalty);
+            EndEpisode();
+        }
+        else if (_landingRequested && _controller.State == DroneState.Landed)
+        {
+            FinishSafeLanding();
+        }
+    }
+
+    void ApplyImpactDamage(float impactSpeed, string hitObjectName)
+    {
+        if (Time.time - _lastImpactTime < impactCooldownSeconds) return;
+        _lastImpactTime = Time.time;
+
+        float severity = Mathf.InverseLerp(safeImpactSpeed, Mathf.Max(safeImpactSpeed + 0.1f, severeImpactSpeed), impactSpeed);
+        if (severity <= 0f) return;
+
+        _damage = Mathf.Clamp01(_damage + severity * maxDamagePerImpact);
+        AddReward(-crashPenalty * severity);
+        Debug.LogWarning($"[DroneFollowAgent] Impact with {hitObjectName}: {impactSpeed:F2} m/s, severity={severity:F2}, damage={_damage:P0}", this);
+
+        if (_damage >= terminalDamage)
+        {
+            _ending = true;
+            AddReward(-terminalCrashPenalty);
+            EndEpisode();
+        }
+    }
+
+    void FinishSafeLanding()
+    {
+        if (_ending) return;
         _ending = true;
-        AddReward(-1f);
+        AddReward(safeLandingReward);
         EndEpisode();
     }
 }

@@ -182,7 +182,9 @@ public static class DroneFollowSetup
         var brainParameters = behavior.BrainParameters;
         brainParameters.VectorObservationSize = DroneFollowContract.ObservationSize;
         brainParameters.NumStackedVectorObservations = 1;
-        brainParameters.ActionSpec = ActionSpec.MakeContinuous(DroneFollowContract.ActionSize);
+        brainParameters.ActionSpec = new ActionSpec(
+            DroneFollowContract.ActionSize,
+            new[] { DroneFollowContract.DiscreteActionCount });
 
         var requester = droneObject.GetComponent<DecisionRequester>();
         if (requester == null)
@@ -204,7 +206,7 @@ public static class DroneFollowSetup
         EditorSceneManager.SaveOpenScenes();
         Selection.activeGameObject = droneObject;
 
-        Debug.Log($"[DroneFollowSetup] Agent1 configured: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} actions, {actualRateHz:F1} Hz; camera={camera.name}; removed {removedCameraSensors} CameraSensorComponent(s). The detector box is shown over the matching PiP preview.");
+        Debug.Log($"[DroneFollowSetup] Agent1 configured: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} continuous actions + {DroneFollowContract.DiscreteBranchSize} discrete branch, {actualRateHz:F1} Hz; camera={camera.name}; removed {removedCameraSensors} CameraSensorComponent(s). The detector box is shown over the matching PiP preview.");
     }
 
     static Camera FindChildCamera(GameObject root, string cameraName)

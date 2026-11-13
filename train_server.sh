@@ -103,14 +103,20 @@ if [[ ! -f "$CONFIG" ]]; then
     exit 1
 fi
 
-# Verify conda is available in PATH
+# Verify conda is available in PATH and use the dedicated ML-Agents environment.
+CONDA_ENV="${CONDA_ENV:-mlagents}"
 if ! command -v conda >/dev/null 2>&1; then
     echo "conda was not found in PATH. Run: conda config --add channels conda-forge" >&2
     exit 1
 fi
 
-if ! command -v mlagents-learn >/dev/null 2>&1; then
-    echo "mlagents-learn was not found in Conda environment '$CONDA_ENV'." >&2
+if ! conda env list | awk '{print $1}' | grep -Fxq "$CONDA_ENV"; then
+    echo "Conda environment '$CONDA_ENV' was not found. Create it and install ml-agents there first." >&2
+    exit 1
+fi
+
+if ! conda run -n "$CONDA_ENV" python -c "import mlagents" >/dev/null 2>&1; then
+    echo "ml-agents is not installed in Conda environment '$CONDA_ENV'." >&2
     exit 1
 fi
 
@@ -169,9 +175,10 @@ echo "Unity trainer port: $BASE_PORT"
 echo "When mlagents-learn is listening, press Play in the matching Unity scene."
 echo ""
 
-mlagents-learn "$CONFIG" \
+conda run -n "$CONDA_ENV" --no-capture-output mlagents-learn "$CONFIG" \
     --run-id="$RUN_ID" \
-    --base-port="$BASE_PORT" 2>&1 | tee -a "$RUN_ID.log" || {
+    --base-port="$BASE_PORT" \
+    --no-graphics 2>&1 | tee -a "$RUN_ID.log" || {
     echo "mlagents-learn failed:"
     cat "$RUN_ID.log" 2>/dev/null || true
     exit 1
