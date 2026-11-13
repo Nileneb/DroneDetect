@@ -6,6 +6,7 @@ using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Policies;
 using Unity.MLAgents.Sensors;
+using UnityEngine.UI;
 
 /// <summary>
 /// One-click wiring for the existing Agent1 training scene. It keeps DroneCSI
@@ -17,6 +18,9 @@ public static class DroneFollowSetup
     const string TrainingScenePath = "Assets/Scenes/Agent1.unity";
     const string TargetPrefabPath = "Assets/Prefabs/PrefabBene.prefab";
     const string TargetInstanceName = "DroneFollowTarget";
+    const string GroundPreviewName = "PiP_Ground";
+    const string DepthPreviewName = "PiP_Depth";
+    const string BoundingBoxOverlayName = "DroneFollowBoundingBoxOverlay";
 
     [MenuItem("DroneDetect/Configure Active Scene for DroneFollow")]
     public static void ConfigureActiveScene()
@@ -39,37 +43,35 @@ public static class DroneFollowSetup
 
         if (simulatedDrone == null)
         {
-            Debug.LogError($"[DroneFollowSetup] No SimulatedDroneController was found in {TrainingScenePath}. Check the scene and drone prefab.");
-            return;
-        }
-        if (!simulatedDrone.gameObject.activeInHierarchy)
-        {
-            Debug.LogError("[DroneFollowSetup] The drone controller exists in Agent1 but its GameObject is inactive. Activate the drone and retry.");
+            Debug.LogError($"[DroneFollowSetup] No active SimulatedDroneController was found in {TrainingScenePath}. Check the scene and drone prefab.");
             return;
         }
 
-        var legacyAgent = simulatedDrone.GetComponent<DroneAgent>();
+        GameObject droneObject = simulatedDrone.gameObject;
+        var legacyAgent = droneObject.GetComponent<DroneAgent>();
         if (legacyAgent == null)
         {
             Debug.LogError("[DroneFollowSetup] DroneAgent with the existing target list was not found on the drone.");
             return;
         }
 
-        Camera camera = legacyAgent.depthCamera != null
-            ? legacyAgent.depthCamera.GetComponent<Camera>()
-            : simulatedDrone.GetComponentInChildren<Camera>(true);
+        // GroundCam looks down at the target area; prefer it over the legacy
+        // forward/depth camera for projecting a person standing on the ground.
+        Camera groundCamera = FindChildCamera(droneObject, "GroundCam");
+        Camera camera = groundCamera != null
+            ? groundCamera
+            : legacyAgent.depthCamera != null
+                ? legacyAgent.depthCamera.GetComponent<Camera>()
+                : droneObject.GetComponentInChildren<Camera>(true);
         if (camera == null)
         {
             Debug.LogError("[DroneFollowSetup] No camera found on the drone or its children.");
             return;
         }
 
-        GameObject droneObject = simulatedDrone.gameObject;
         Scene trainingScene = droneObject.scene;
         Undo.RecordObject(droneObject, "Configure DroneFollow");
 
-        // Use the animated character prefab rather than a waypoint sphere. Reuse
-        // the named instance when the setup menu is run a second time.
         GameObject targetObject = FindNamedObject(trainingScene, TargetInstanceName);
         if (targetObject == null)
         {
@@ -101,7 +103,6 @@ public static class DroneFollowSetup
             return;
         }
 
-        // The old DroneCSI waypoint markers are not part of the new task.
         if (legacyAgent.targets != null)
         {
             foreach (GameObject waypoint in legacyAgent.targets)
@@ -119,11 +120,27 @@ public static class DroneFollowSetup
             return;
         }
 
-        // Drone.prefab has two CameraSensorComponents on the same GameObject as
-        // the Agent. UseChildSensors=false does not exclude those root sensors.
-        // Remove only ML-Agents sensor components; keep Unity Camera components
-        // alive for bounding-box projection in SimulatedBoundingBoxDetector.
-        int removedCameraSensors = RemoveCameraSensorComponents(droneObject);
+        // Drone.prefab and the inactive Shepherd prefab both contain camera
+        // sensors. Remove them from this training scene so no Agent can update
+        // a stale CameraSensor at episode end. Unity Camera components remain.
+        int removedCameraSensors = RemoveCameraSensorComponents(trainingScene);
+
+        if (groundCamera != null)
+        {
+            RawImage groundPreview = GetRawImage(trainingScene, GroundPreviewName);
+            RenderTexture groundTexture = groundPreview != null ? groundPreview.texture as RenderTexture : null;
+            if (groundTexture != null)
+            {
+                Undo.RecordObject(groundCamera, "Route GroundCam to PiP preview");
+                groundCamera.targetTexture = groundTexture;
+                groundCamera.targetDisplay = 0;
+                EditorUtility.SetDirty(groundCamera);
+            }
+            else
+            {
+                Debug.LogWarning("[DroneFollowSetup] PiP_Ground does not reference a RenderTexture; GroundCam will still be used for projection, but its preview cannot be routed automatically.");
+            }
+        }
 
         var controllerAdapter = droneObject.GetComponent<SimulatedDroneFollowControllerAdapter>();
         if (controllerAdapter == null)
@@ -138,6 +155,8 @@ public static class DroneFollowSetup
         detector.sampleRateHz = DroneFollowContract.DecisionRateHz;
         detector.minLatencySeconds = 0.10f;
         detector.maxLatencySeconds = 0.20f;
+
+        ConfigureBoundingBoxOverlay(trainingScene, camera, detector);
 
         var targetMotion = target.GetComponent<SimulatedMovingTarget>();
         if (targetMotion == null)
@@ -160,9 +179,6 @@ public static class DroneFollowSetup
         behavior.BehaviorType = BehaviorType.Default;
         behavior.UseChildSensors = false;
 
-        // BrainParameters is a read-only property, but returns the mutable
-        // reference object. Mutate that object in place to align its spec with
-        // CollectObservations and OnActionReceived.
         var brainParameters = behavior.BrainParameters;
         brainParameters.VectorObservationSize = DroneFollowContract.ObservationSize;
         brainParameters.NumStackedVectorObservations = 1;
@@ -188,18 +204,87 @@ public static class DroneFollowSetup
         EditorSceneManager.SaveOpenScenes();
         Selection.activeGameObject = droneObject;
 
-        Debug.Log($"[DroneFollowSetup] Agent1 configured with {TargetPrefabPath}: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} continuous actions, {actualRateHz:F1} Hz. Removed {removedCameraSensors} ML-Agents camera sensor component(s); Unity cameras remain available for box projection.");
+        Debug.Log($"[DroneFollowSetup] Agent1 configured: {DroneFollowContract.ObservationSize} observations, {DroneFollowContract.ActionSize} actions, {actualRateHz:F1} Hz; camera={camera.name}; removed {removedCameraSensors} CameraSensorComponent(s). The detector box is shown over the matching PiP preview.");
     }
 
-    static int RemoveCameraSensorComponents(GameObject root)
+    static Camera FindChildCamera(GameObject root, string cameraName)
+    {
+        foreach (Camera candidate in root.GetComponentsInChildren<Camera>(true))
+        {
+            if (candidate != null && candidate.name == cameraName)
+                return candidate;
+        }
+        return null;
+    }
+
+    static RawImage GetRawImage(Scene scene, string objectName)
+    {
+        GameObject previewObject = FindNamedObject(scene, objectName);
+        return previewObject != null ? previewObject.GetComponent<RawImage>() : null;
+    }
+
+    static void ConfigureBoundingBoxOverlay(Scene scene, Camera camera, SimulatedBoundingBoxDetector detector)
+    {
+        string previewName = camera.name == "GroundCam" ? GroundPreviewName : DepthPreviewName;
+        RawImage preview = GetRawImage(scene, previewName);
+        if (preview == null)
+        {
+            Debug.LogWarning($"[DroneFollowSetup] Could not find RawImage '{previewName}'; bounding boxes will still be computed but not drawn in the Game view.");
+            return;
+        }
+
+        Transform existing = preview.transform.Find(BoundingBoxOverlayName);
+        GameObject overlayObject;
+        if (existing != null)
+        {
+            overlayObject = existing.gameObject;
+        }
+        else
+        {
+            overlayObject = new GameObject(
+                BoundingBoxOverlayName,
+                typeof(RectTransform),
+                typeof(CanvasRenderer),
+                typeof(DroneFollowBoundingBoxOverlay));
+            Undo.RegisterCreatedObjectUndo(overlayObject, "Create DroneFollow bounding box overlay");
+            overlayObject.transform.SetParent(preview.transform, false);
+        }
+
+        RectTransform overlayRect = overlayObject.GetComponent<RectTransform>();
+        overlayRect.anchorMin = Vector2.zero;
+        overlayRect.anchorMax = Vector2.one;
+        overlayRect.offsetMin = Vector2.zero;
+        overlayRect.offsetMax = Vector2.zero;
+        overlayRect.localScale = Vector3.one;
+        overlayObject.transform.SetAsLastSibling();
+
+        var overlay = overlayObject.GetComponent<DroneFollowBoundingBoxOverlay>();
+        if (overlay == null)
+            overlay = Undo.AddComponent<DroneFollowBoundingBoxOverlay>(overlayObject);
+        Undo.RecordObject(overlay, "Configure DroneFollow bounding box overlay");
+        overlay.detector = detector;
+        overlay.lineThickness = 2.5f;
+        overlay.color = new Color(0.18f, 1f, 0.28f, 1f);
+        overlay.raycastTarget = false;
+        EditorUtility.SetDirty(overlay);
+        EditorUtility.SetDirty(overlayRect);
+    }
+
+    static int RemoveCameraSensorComponents(Scene scene)
     {
         int removed = 0;
-        var sensorComponents = root.GetComponentsInChildren<CameraSensorComponent>(true);
-        foreach (CameraSensorComponent sensor in sensorComponents)
+        if (!scene.IsValid() || !scene.isLoaded)
+            return removed;
+
+        foreach (GameObject root in scene.GetRootGameObjects())
         {
-            if (sensor == null) continue;
-            Undo.DestroyObjectImmediate(sensor);
-            removed++;
+            var sensorComponents = root.GetComponentsInChildren<CameraSensorComponent>(true);
+            foreach (CameraSensorComponent sensor in sensorComponents)
+            {
+                if (sensor == null) continue;
+                Undo.DestroyObjectImmediate(sensor);
+                removed++;
+            }
         }
 
         return removed;
@@ -233,9 +318,11 @@ public static class DroneFollowSetup
 
         foreach (GameObject root in scene.GetRootGameObjects())
         {
-            var controller = root.GetComponentInChildren<SimulatedDroneController>(true);
-            if (controller != null)
-                return controller;
+            foreach (SimulatedDroneController controller in root.GetComponentsInChildren<SimulatedDroneController>(true))
+            {
+                if (controller != null && controller.gameObject.activeInHierarchy)
+                    return controller;
+            }
         }
 
         return null;
