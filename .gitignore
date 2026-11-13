@@ -100,3 +100,5 @@ InitTestScene*.unity*
 # Excluded since 2026-05-17 to stop gitingest from timing out on clone.
 results/
 
+
+.fake
