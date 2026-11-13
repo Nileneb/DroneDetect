@@ -2,14 +2,13 @@ using UnityEngine;
 using UnityEngine.UI;
 
 /// <summary>
-/// Renders the delayed detector box over the camera's RawImage preview. The box
-/// is visualization only; policy observations remain the four-value contract.
+/// Renders the delayed detector box over the camera RawImage preview. This is
+/// visualization only; policy observations remain the four-value contract.
 /// </summary>
-\[RequireComponent(typeof(RectTransform), typeof(CanvasRenderer))\]
 public sealed class DroneFollowBoundingBoxOverlay : MaskableGraphic
 {
     public SimulatedBoundingBoxDetector detector;
-    \[Min(1f)\] public float lineThickness = 2f;
+    public float lineThickness = 2f;
 
 ```
 Rect _viewportBox;
