@@ -1,17 +1,16 @@
-#!/usr/bin/env bash
-set -Eeuo pipefail
+#!/bin/bash
+set -euo pipefail
 
-ROOT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-cd "$ROOT_DIR"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR" || exit 1
 
-CONDA_ENV="${CONDA_ENV:-mlagents}"
 BASE_PORT="${BASE_PORT:-5004}"
 TENSORBOARD_PORT="${TENSORBOARD_PORT:-6006}"
 WOLF_DEMO_DIR="Assets/Demonstrations/WolfSessions"
 DRONE_DEMO_DIR="Assets/Demonstrations/DroneSessions"
 
 usage() {
-    cat <<'USAGE'
+    cat <<USAGE
 Usage:
   ./train_server.sh [trainer] [run-id]
 
@@ -24,7 +23,7 @@ Trainers:
   wolfcsi        WolfCSI PPO + GAIL demos from DB
 
 Environment overrides:
-  CONDA_ENV=mlagents BASE_PORT=5004 TENSORBOARD_PORT=6006
+  BASE_PORT=5004 TENSORBOARD_PORT=6006
 
 Examples:
   ./train_server.sh
@@ -32,6 +31,7 @@ Examples:
   ./train_server.sh droneshepherd shepherd_test_01
   BASE_PORT=5004 ./train_server.sh follow
 USAGE
+    exit 0
 }
 
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
@@ -103,13 +103,11 @@ if [[ ! -f "$CONFIG" ]]; then
     exit 1
 fi
 
+# Verify conda is available in PATH
 if ! command -v conda >/dev/null 2>&1; then
-    echo "conda was not found in PATH." >&2
+    echo "conda was not found in PATH. Run: conda config --add channels conda-forge" >&2
     exit 1
 fi
-CONDA_BASE="$(conda info --base)"
-source "$CONDA_BASE/etc/profile.d/conda.sh"
-conda activate "$CONDA_ENV"
 
 if ! command -v mlagents-learn >/dev/null 2>&1; then
     echo "mlagents-learn was not found in Conda environment '$CONDA_ENV'." >&2
@@ -120,8 +118,8 @@ fi
 case "$DEMO_SOURCE" in
     wolf)
         echo "Collecting Wolf demos from DB..."
-        python3 tools/shepherd_to_demo.py --all-sessions --output "$WOLF_DEMO_DIR"
-        DEMO_COUNT="$(find "$WOLF_DEMO_DIR" -maxdepth 1 -type f -name '*.demo' 2>/dev/null | wc -l | tr -d ' ')"
+        python3 tools/shepherd_to_demo.py --all-sessions --output "$WOLF_DEMO_DIR" 2>/dev/null
+        DEMO_COUNT="$(find "$WOLF_DEMO_DIR" -maxdepth 1 -type f -name '*.demo' 2>/dev/null | wc -l | tr -d ' ')" || echo "0"
         if [[ "$DEMO_COUNT" -eq 0 ]]; then
             echo "No Wolf .demo files found in $WOLF_DEMO_DIR; GAIL cannot start." >&2
             exit 1
@@ -130,8 +128,8 @@ case "$DEMO_SOURCE" in
         ;;
     drone)
         echo "Collecting DroneShepherd demos from DB..."
-        python3 tools/shepherd_to_drone_demo.py --all-sessions --output "$DRONE_DEMO_DIR"
-        DEMO_COUNT="$(find "$DRONE_DEMO_DIR" -maxdepth 1 -type f -name '*.demo' 2>/dev/null | wc -l | tr -d ' ')"
+        python3 tools/shepherd_to_drone_demo.py --all-sessions --output "$DRONE_DEMO_DIR" 2>/dev/null
+        DEMO_COUNT="$(find "$DRONE_DEMO_DIR" -maxdepth 1 -type f -name '*.demo' 2>/dev/null | wc -l | tr -d ' ')" || echo "0"
         if [[ "$DEMO_COUNT" -eq 0 ]]; then
             echo "No Drone .demo files found in $DRONE_DEMO_DIR; GAIL cannot start." >&2
             exit 1
@@ -144,12 +142,15 @@ case "$DEMO_SOURCE" in
 esac
 
 TENSORBOARD_PID=""
-cleanup() {
+cleanup_tensorboard() {
     if [[ -n "$TENSORBOARD_PID" ]]; then
-        kill "$TENSORBOARD_PID" 2>/dev/null || true
+        kill -TERM "$TENSORBOARD_PID" 2>/dev/null || true
+        sleep 2
+        kill -9 "$TENSORBOARD_PID" 2>/dev/null || true
+        rm -f -- "$TENSORBOARD_PID" 2>/dev/null || true
     fi
 }
-trap cleanup EXIT
+trap cleanup_tensorboard EXIT
 
 if command -v tensorboard >/dev/null 2>&1; then
     tensorboard --logdir results/ --port "$TENSORBOARD_PORT" --host 0.0.0.0 &
@@ -171,4 +172,10 @@ echo ""
 mlagents-learn "$CONFIG" \
     --run-id="$RUN_ID" \
     --base-port="$BASE_PORT" \
-    --no-graphics
+    --no-graphics 2>&1 | tee -a "$RUN_ID.log" || {
+    echo "mlagents-learn failed:"
+    cat "$RUN_ID.log" 2>/dev/null || true
+    exit 1
+}
+echo ""
+echo "Training complete! Results in ./results/"
