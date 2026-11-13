@@ -1,3 +1,4 @@
+```csharp
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -8,12 +9,12 @@ using UnityEngine.UI;
 
 public static class DroneFollowCameraRouting
 {
-    \[MenuItem("DroneDetect/Configure Active Scene for DroneFollow (camera roles)")\]
+    [MenuItem("DroneDetect/Configure Active Scene for DroneFollow (camera roles)")]
     public static void ConfigureCameraRoles()
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode)
         {
-            Debug.LogError("\[DroneFollowCameraRouting\] Stop Play mode before configuring camera roles.");
+            Debug.LogError("[DroneFollowCameraRouting] Stop Play mode before configuring camera roles.");
             return;
         }
         DroneFollowSetup.ConfigureActiveScene();
@@ -21,7 +22,7 @@ public static class DroneFollowCameraRouting
         DroneFollowAgent agent = FindAgent(scene);
         if (agent == null)
         {
-            Debug.LogError("\[DroneFollowCameraRouting\] No DroneFollowAgent found in the active scene.");
+            Debug.LogError("[DroneFollowCameraRouting] No DroneFollowAgent found in the active scene.");
             return;
         }
         GameObject drone = agent.gameObject;
@@ -30,7 +31,7 @@ public static class DroneFollowCameraRouting
         Camera depthCamera = FindCamera(drone, "DepthCamera");
         if (mainCamera == null || groundCamera == null)
         {
-            Debug.LogError("\[DroneFollowCameraRouting\] Main Camera and GroundCam are required. No camera roles were reassigned.");
+            Debug.LogError("[DroneFollowCameraRouting] Main Camera and GroundCam are required. No camera roles were reassigned.");
             return;
         }
         Undo.RecordObject(mainCamera, "Route Main Camera to primary display");
@@ -41,14 +42,14 @@ public static class DroneFollowCameraRouting
         mainCamera.gameObject.tag = "MainCamera";
         EditorUtility.SetDirty(mainCamera);
         groundCamera.gameObject.tag = "Untagged";
-        bool groundPreviewReady = RoutePreview(scene, groundCamera, "PiP\_Ground", true);
+        bool groundPreviewReady = RoutePreview(scene, groundCamera, "PiP_Ground", true);
         if (!groundPreviewReady)
-            Debug.LogError("\[DroneFollowCameraRouting\] GroundCam has no PiP\_Ground RenderTexture; it will not render into the main display.");
+            Debug.LogError("[DroneFollowCameraRouting] GroundCam has no PiP_Ground RenderTexture; it will not render into the main display.");
         bool depthPreviewReady = false;
         if (depthCamera != null)
         {
             depthCamera.gameObject.tag = "Untagged";
-            depthPreviewReady = RoutePreview(scene, depthCamera, "PiP\_Depth", false);
+            depthPreviewReady = RoutePreview(scene, depthCamera, "PiP_Depth", false);
         }
         foreach (Camera camera in drone.GetComponentsInChildren<Camera>(true))
         {
@@ -69,7 +70,7 @@ public static class DroneFollowCameraRouting
         }
         else
         {
-            Debug.LogError("\[DroneFollowCameraRouting\] SimulatedBoundingBoxDetector is missing.");
+            Debug.LogError("[DroneFollowCameraRouting] SimulatedBoundingBoxDetector is missing.");
         }
         BehaviorParameters behavior = drone.GetComponent<BehaviorParameters>();
         if (behavior != null)
@@ -81,7 +82,7 @@ public static class DroneFollowCameraRouting
         int removedSensors = RemoveCameraSensors(scene);
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveOpenScenes();
-        Debug.Log("\[DroneFollowCameraRouting\] Saved roles: Main Camera -&gt; full primary display; GroundCam -&gt; PiP\_Ground and detector; DepthCamera -&gt; PiP\_Depth. Ground preview=" + groundPreviewReady + ", depth preview=" + depthPreviewReady + ", removed CameraSensorComponent(s)=" + removedSensors + ". Camera rotations were not changed.");
+        Debug.Log("[DroneFollowCameraRouting] Saved roles: Main Camera -> full primary display; GroundCam -> PiP_Ground and detector; DepthCamera -> PiP_Depth. Ground preview=" + groundPreviewReady + ", depth preview=" + depthPreviewReady + ", removed CameraSensorComponent(s)=" + removedSensors + ". Camera rotations were not changed.");
     }
     static bool RoutePreview(Scene scene, Camera camera, string previewName, bool required)
     {
@@ -98,16 +99,16 @@ public static class DroneFollowCameraRouting
             EditorUtility.SetDirty(camera);
             return true;
         }
-        if (!required &amp;&amp; camera.targetTexture != null)
+        if (!required && camera.targetTexture != null)
         {
             camera.enabled = true;
             EditorUtility.SetDirty(camera);
-            Debug.LogWarning("\[DroneFollowCameraRouting\] " + previewName + " is missing; keeping " + camera.name + " on its existing RenderTexture.");
+            Debug.LogWarning("[DroneFollowCameraRouting] " + previewName + " is missing; keeping " + camera.name + " on its existing RenderTexture.");
             return true;
         }
         camera.enabled = false;
         EditorUtility.SetDirty(camera);
-        Debug.LogWarning("\[DroneFollowCameraRouting\] Could not route " + camera.name + " to " + previewName + ".");
+        Debug.LogWarning("[DroneFollowCameraRouting] Could not route " + camera.name + " to " + previewName + ".");
         return false;
     }
     static int RemoveCameraSensors(Scene scene)
@@ -117,7 +118,7 @@ public static class DroneFollowCameraRouting
             return removed;
         foreach (GameObject root in scene.GetRootGameObjects())
         {
-            CameraSensorComponent\[\] sensors = root.GetComponentsInChildren<CameraSensorComponent>(true);
+            CameraSensorComponent[] sensors = root.GetComponentsInChildren<CameraSensorComponent>(true);
             foreach (CameraSensorComponent sensor in sensors)
             {
                 if (sensor == null)
@@ -134,10 +135,10 @@ public static class DroneFollowCameraRouting
             return null;
         foreach (GameObject root in scene.GetRootGameObjects())
         {
-            DroneFollowAgent\[\] agents = root.GetComponentsInChildren<DroneFollowAgent>(true);
+            DroneFollowAgent[] agents = root.GetComponentsInChildren<DroneFollowAgent>(true);
             foreach (DroneFollowAgent agent in agents)
             {
-                if (agent != null &amp;&amp; agent.gameObject.activeInHierarchy)
+                if (agent != null && agent.gameObject.activeInHierarchy)
                     return agent;
             }
         }
@@ -147,7 +148,7 @@ public static class DroneFollowCameraRouting
     {
         foreach (Camera camera in root.GetComponentsInChildren<Camera>(true))
         {
-            if (camera != null &amp;&amp; camera.name == cameraName)
+            if (camera != null && camera.name == cameraName)
                 return camera;
         }
         return null;
@@ -169,3 +170,4 @@ public static class DroneFollowCameraRouting
         return null;
     }
 }
+```
