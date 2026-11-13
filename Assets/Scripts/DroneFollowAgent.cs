@@ -114,6 +114,7 @@ public sealed class DroneFollowAgent : Agent
     {
         if (_ending || _controller == null || actions.ContinuousActions.Length < 4) return;
 
+        Vector4 previousAction = _previousAction;
         var ca = actions.ContinuousActions;
         float forward = Mathf.Clamp(ca[0], -1f, 1f);
         float left = Mathf.Clamp(ca[1], -1f, 1f);
@@ -138,10 +139,10 @@ public sealed class DroneFollowAgent : Agent
             _previousAction = Vector4.zero;
         }
 
-        AddFollowRewards();
+        AddFollowRewards(previousAction, _previousAction);
     }
 
-    void AddFollowRewards()
+    void AddFollowRewards(Vector4 previousAction, Vector4 currentAction)
     {
         if (followTarget != null)
         {
@@ -168,12 +169,10 @@ public sealed class DroneFollowAgent : Agent
         if (_controller.Navdata != null)
             AddReward(-altitudeRewardWeight * Mathf.Abs(_controller.Navdata.altitude - desiredAltitude));
 
-        float smoothness =
-            _previousAction.x * _previousAction.x +
-            _previousAction.y * _previousAction.y +
-            _previousAction.z * _previousAction.z +
-            _previousAction.w * _previousAction.w;
-        AddReward(-smoothActionPenalty * smoothness);
+        Vector4 delta = currentAction - previousAction;
+        float actionDeltaSquared = delta.x * delta.x + delta.y * delta.y +
+                                   delta.z * delta.z + delta.w * delta.w;
+        AddReward(-smoothActionPenalty * actionDeltaSquared);
     }
 
     public override void Heuristic(in ActionBuffers actionsOut)
