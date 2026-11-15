@@ -25,9 +25,13 @@ public static class DroneFollowSetup
     const string RgbTextureAssetPath = "Assets/RenderTextures/MainCameraRGB.renderTexture";
     const string TargetInstanceName = "DroneFollowTarget";
     const string MainCameraCanvasName = "DroneFollowMainCameraCanvas";
-    // Objects of the removed Shepherd/multiplayer prototype; their scripts no longer exist.
+    // Objects of the removed Shepherd/multiplayer prototype, plus the Meshy rock whose mesh contains a
+    // human figure: YOLO detects it as a second person and the policy would follow it.
     static readonly string[] LegacyObjectNames =
-        { "DroneControlPanel", "ShepherdGameManager", "RevbClient", "LoginScreen", "MatchmakeManager" };
+    {
+        "DroneControlPanel", "ShepherdGameManager", "RevbClient", "LoginScreen", "MatchmakeManager",
+        "WolfPlayer", "Sheep", "Meshy_AI_Balanced_Rock_1113115437_texture"
+    };
     const string MainCameraPreviewName = "DroneFollowMainCameraPreview";
     const string MainCameraScreenName = "Screen1_MainCamera";
     const string DepthScreenName = "Screen2_Depth";
@@ -234,6 +238,8 @@ public static class DroneFollowSetup
         // WHY(sim-to-real, camera): the prefab yawed Main Camera 45° off the flight axis; the AR.Drone camera looks
         // straight ahead, so a policy trained on the yawed view would fly diagonally on hardware.
         camera.transform.rotation = droneObject.transform.rotation;
+        camera.transform.position = NosePosition(droneObject, camera.transform.position);
+        camera.nearClipPlane = 0.05f;
         RecordPrefabInstanceOverride(camera.transform);
         EditorUtility.SetDirty(camera);
         if (PrefabUtility.IsPartOfPrefabInstance(camera))
@@ -369,6 +375,35 @@ public static class DroneFollowSetup
 
         Debug.Log($"[DroneFollowSetup] Agent1 configured: perception on '{mainCamera.name}' is assigned to DroneFollowAgent and writes to its grayscale depth sensor; {DroneFollowContract.ObservationSize} vector observations + {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight} image, {DroneFollowContract.ActionSize} continuous actions + {DroneFollowContract.DiscreteBranchSize} discrete branch, {actualRateHz:F1} Hz; removed {removedCameraSensors} CameraSensorComponent(s) and {removedMissingScripts} missing script(s).");
         return true;
+    }
+
+    /// <summary>
+    /// Just ahead of the drone's own meshes (rotors included) at the camera's current height, so the
+    /// forward-looking camera never sees its own airframe, like the AR.Drone's nose camera.
+    /// </summary>
+    static Vector3 NosePosition(GameObject droneObject, Vector3 currentCameraPosition)
+    {
+        Transform drone = droneObject.transform;
+        Vector3 forward = Vector3.ProjectOnPlane(drone.forward, Vector3.up).normalized;
+        float frontExtent = 0f;
+        foreach (Renderer renderer in droneObject.GetComponentsInChildren<Renderer>(false))
+        {
+            if (!renderer.enabled || renderer is ParticleSystemRenderer)
+                continue;
+            Bounds bounds = renderer.bounds;
+            for (int corner = 0; corner < 8; corner++)
+            {
+                Vector3 point = new Vector3(
+                    (corner & 1) == 0 ? bounds.min.x : bounds.max.x,
+                    (corner & 2) == 0 ? bounds.min.y : bounds.max.y,
+                    (corner & 4) == 0 ? bounds.min.z : bounds.max.z);
+                frontExtent = Mathf.Max(frontExtent, Vector3.Dot(point - drone.position, forward));
+            }
+        }
+
+        Vector3 nose = drone.position + forward * (frontExtent + 0.03f);
+        nose.y = currentCameraPosition.y;
+        return nose;
     }
 
     static Camera FindChildCamera(GameObject root, string cameraName)
@@ -628,8 +663,8 @@ public static class DroneFollowSetup
     {
         foreach (string objectName in LegacyObjectNames)
         {
-            GameObject legacyObject = FindNamedObject(scene, objectName);
-            if (legacyObject != null)
+            GameObject legacyObject;
+            while ((legacyObject = FindNamedObject(scene, objectName)) != null)
                 Undo.DestroyObjectImmediate(legacyObject);
         }
     }

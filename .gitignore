@@ -116,3 +116,7 @@ results/
 # Roslyn DLLs installed locally by the MCP for Unity package (script validation only)
 /Assets/Plugins/Roslyn/
 /Assets/Plugins/Roslyn.meta
+
+# Screenshots taken through the Unity MCP bridge
+/Assets/Screenshots/
+/Assets/Screenshots.meta
