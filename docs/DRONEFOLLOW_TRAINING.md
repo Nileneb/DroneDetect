@@ -141,7 +141,7 @@ be in that folder.
 
 **DroneDetect > DroneFollow > Record Scripted Expert Demonstration** still flies the ground-truth PD
 follower through random stages at training speed and publishes `results/demonstrations/DroneFollowDemo.demo`.
-It is no longer used by the training config; point `demo_path` at it only for comparison runs.
+The training config currently uses it; switch `demo_path` to `results/demonstrations/manual` once manual flights exist.
 
 After recording, start a new trainer run to load the updated demo; a trainer
 that is already running does not reload demonstration files. `config/DroneFollow.yaml` warm-starts PPO with behavioral cloning and GAIL from the

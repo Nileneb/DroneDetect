@@ -1,13 +1,14 @@
-# DroneFollow PPO, warm-started by behavioral cloning and GAIL from manual Xbox-controller flights
-# (DroneDetect > DroneFollow > Record Manual Demonstration); every .demo file in
-# results/demonstrations/manual is loaded. The target walks fixed loops on the terrain.
+# DroneFollow PPO, warm-started by behavioral cloning and GAIL. Currently from the scripted expert
+# (DroneDetect > DroneFollow > Record Scripted Expert Demonstration -> DroneFollowDemo.demo); once manual
+# Xbox-controller flights exist, point both demo_path entries at results/demonstrations/manual
+# (every .demo file there is loaded). The target walks fixed loops on the terrain.
 # Policy inputs: 19 vector observations + 84x84 grayscale MiDaS depth; outputs: four continuous actions.
 # Landing is not a policy action: the sim lands after the walk, the operator lands the real drone.
 behaviors:
   DroneFollow:
     trainer_type: ppo
     behavioral_cloning:
-      demo_path: results/demonstrations/manual
+      demo_path: results/demonstrations/DroneFollowDemo.demo
       strength: 1.0
       steps: 150000
       batch_size: 128
@@ -17,7 +18,7 @@ behaviors:
         gamma: 0.995
         strength: 1.0
       gail:
-        demo_path: results/demonstrations/manual
+        demo_path: results/demonstrations/DroneFollowDemo.demo
         strength: 0.3
         gamma: 0.99
         encoding_size: 128
