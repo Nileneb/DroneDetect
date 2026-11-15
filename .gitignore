@@ -120,3 +120,6 @@ results/
 # Screenshots taken through the Unity MCP bridge
 /Assets/Screenshots/
 /Assets/Screenshots.meta
+
+# ML-Agents writes per-run timers into the scene folder
+/Assets/ML-Agents/Timers/

@@ -5,6 +5,7 @@ using UnityEditor.Build;
 using UnityEditor.Build.Reporting;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 /// <summary>
 /// Batch-mode build entry points:
@@ -15,6 +16,7 @@ public static class DroneFollowBuild
 {
     const string TrainingScenePath = "Assets/Scenes/Agent1.unity";
     const string TrainingOutputPath = "Builds/Training/DroneFollow.x86_64";
+    const string AndroidOutputPath = "Builds/Android/DroneFollowGroundStation.apk";
 
     [MenuItem("DroneDetect/Build/Linux Training Environment")]
     public static void BuildTrainingLinux()
@@ -35,6 +37,31 @@ public static class DroneFollowBuild
             PlayerSettings.SetScriptingBackend(NamedBuildTarget.Standalone, ScriptingImplementation.Mono2x);
 
             return Build(new[] { TrainingScenePath }, TrainingOutputPath, BuildTarget.StandaloneLinux64);
+        });
+    }
+
+    [MenuItem("DroneDetect/Build/Android Ground Station APK")]
+    public static void BuildAndroidGroundStation()
+    {
+        RunBuild(() =>
+        {
+            if (!DroneFollowGroundStationSetup.CreateScene())
+                throw new InvalidOperationException("The ground-station scene could not be generated; see the errors above.");
+
+            PlayerSettings.productName = "DroneFollow Ground Station";
+            PlayerSettings.SetApplicationIdentifier(NamedBuildTarget.Android, "com.dronedetect.groundstation");
+            PlayerSettings.SetScriptingBackend(NamedBuildTarget.Android, ScriptingImplementation.IL2CPP);
+            PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
+            PlayerSettings.Android.minSdkVersion = AndroidSdkVersions.AndroidApiLevel26;
+            // Sockets to the drone need the INTERNET permission even though no internet is used.
+            PlayerSettings.Android.forceInternetPermission = true;
+            PlayerSettings.defaultInterfaceOrientation = UIOrientation.LandscapeLeft;
+            PlayerSettings.runInBackground = false;
+            // WHY(sentis): GPUCompute inference needs compute shaders, which Vulkan provides on current phones.
+            PlayerSettings.SetUseDefaultGraphicsAPIs(BuildTarget.Android, false);
+            PlayerSettings.SetGraphicsAPIs(BuildTarget.Android, new[] { GraphicsDeviceType.Vulkan, GraphicsDeviceType.OpenGLES3 });
+
+            return Build(new[] { DroneFollowGroundStationSetup.ScenePath }, AndroidOutputPath, BuildTarget.Android);
         });
     }
 

@@ -105,6 +105,12 @@ public sealed class DroneFollowSentisPerception :
     [Range(0f, 0.2f)] public float detectionCenterJitter = 0.02f;
     [Range(0f, 0.5f)] public float detectionHeightJitterFraction = 0.05f;
 
+    [Header("Target identity")]
+    [Tooltip("Lock onto the most confident person automatically (simulator). Off on the phone: the operator taps the target.")]
+    public bool autoLockTarget = true;
+    [Tooltip("OSNet person re-identification model. Without it, colour signatures identify the target.")]
+    public ModelAsset reidModel;
+
     Worker _depthWorker;
     Worker _yoloWorker;
     Tensor<float> _depthInput;
@@ -136,6 +142,22 @@ public sealed class DroneFollowSentisPerception :
 
     public int DetectionFramesProcessed { get; private set; }
     public float LastPersonScore { get; private set; }
+    public PersonTargetTracker Tracker { get; private set; } = new PersonTargetTracker();
+    public int PeopleInView { get; private set; }
+
+    const int AppearanceWidth = 160;
+    const int AppearanceHeight = 90;
+    const int ReidMaxCandidates = 3;
+    const int ReidInputWidth = 128;
+    const int ReidInputHeight = 256;
+    RenderTexture _appearanceTexture;
+    Color32[] _appearancePixels;
+    bool _appearancePending;
+    Worker _reidWorker;
+    Tensor<float> _reidInput;
+    RenderTexture _reidInputTexture;
+    bool _identityPending;
+    readonly List<PersonTargetTracker.Candidate> _trackerCandidates = new List<PersonTargetTracker.Candidate>();
 
     public DroneTargetDetection Current
     {
@@ -201,6 +223,27 @@ public sealed class DroneFollowSentisPerception :
             _yoloInputTexture = CreateInputTexture(yoloInputSize, "DroneFollow_YOLO_Input", RenderTextureFormat.ARGB32);
         }
 
+        if (reidModel != null)
+        {
+            _reidWorker = new Worker(ModelLoader.Load(reidModel), BackendType.GPUCompute);
+            _reidInput = new Tensor<float>(new TensorShape(1, 3, ReidInputHeight, ReidInputWidth));
+            _reidInputTexture = new RenderTexture(ReidInputWidth, ReidInputHeight, 0, RenderTextureFormat.ARGB32)
+            {
+                name = "DroneFollow_ReID_Input"
+            };
+            _reidInputTexture.Create();
+            Tracker = new PersonTargetTracker(PersonTargetTracker.AppearanceModel.ReidEmbedding);
+        }
+        else
+        {
+            _appearanceTexture = new RenderTexture(AppearanceWidth, AppearanceHeight, 0, RenderTextureFormat.ARGB32)
+            {
+                name = "DroneFollow_Appearance"
+            };
+            _appearanceTexture.Create();
+            Tracker = new PersonTargetTracker(PersonTargetTracker.AppearanceModel.ColourHistogram);
+        }
+
 
         if (rgbInput == null)
         {
@@ -245,6 +288,15 @@ public sealed class DroneFollowSentisPerception :
         _depthWorker = null;
         _yoloWorker?.Dispose();
         _yoloWorker = null;
+        _reidWorker?.Dispose();
+        _reidWorker = null;
+        _reidInput?.Dispose();
+        _reidInput = null;
+        ReleaseInputTexture(ref _reidInputTexture);
+        ReleaseInputTexture(ref _appearanceTexture);
+        _appearancePixels = null;
+        _appearancePending = false;
+        _identityPending = false;
         _depthInput?.Dispose();
         _depthInput = null;
         _yoloInput?.Dispose();
@@ -315,10 +367,12 @@ public sealed class DroneFollowSentisPerception :
             });
         }
 
-        if (_yoloWorker != null && !_yoloPending && Time.time >= _nextYoloInferenceTime)
+        if (_yoloWorker != null && !_yoloPending && !_identityPending && Time.time >= _nextYoloInferenceTime)
         {
             _nextYoloInferenceTime = Time.time + 1f / Mathf.Max(1f, detectionInferenceRateHz);
             PrepareInput(rgbInput, _yoloInputTexture, crop);
+            if (_reidWorker == null)
+                RequestAppearanceFrame(crop);
             TextureConverter.ToTensor(_yoloInputTexture, _yoloInput, new TextureTransform());
             _yoloWorker.Schedule(_yoloInput);
             if (_yoloWorker.PeekOutput() is not Tensor<float> output)
@@ -336,6 +390,34 @@ public sealed class DroneFollowSentisPerception :
                 CompleteDetectionReadback(readable, generation, crop);
             });
         }
+    }
+
+    // A small CPU copy of the YOLO frame gives each person box a colour signature (used without OSNet).
+    void RequestAppearanceFrame(Rect crop)
+    {
+        if (_appearancePending)
+            return;
+        _appearancePending = true;
+        PrepareInput(rgbInput, _appearanceTexture, crop);
+        AsyncGPUReadback.Request(_appearanceTexture, 0, TextureFormat.RGBA32, request =>
+        {
+            _appearancePending = false;
+            if (this == null)
+                return;
+            if (request.hasError)
+            {
+                Debug.LogWarning("[DroneFollowSentisPerception] Appearance readback failed; target identity uses position only this frame.");
+                return;
+            }
+            _appearancePixels ??= new Color32[AppearanceWidth * AppearanceHeight];
+            request.GetData<Color32>().CopyTo(_appearancePixels);
+        });
+    }
+
+    /// <summary>Operator tap: lock onto the person nearest to this viewport point (0..1, origin bottom-left).</summary>
+    public void RequestTargetLock(Vector2 viewportPoint)
+    {
+        Tracker.RequestLock(new Vector2(viewportPoint.x, 1f - viewportPoint.y));
     }
 
     void PrepareInput(RenderTexture source, RenderTexture target, Rect crop)
@@ -672,7 +754,90 @@ public sealed class DroneFollowSentisPerception :
                 break;
         }
 
-        DetectionCandidate best = kept[0];
+        PeopleInView = kept.Count;
+        _trackerCandidates.Clear();
+        int identityCandidates = _reidWorker != null ? Mathf.Min(kept.Count, ReidMaxCandidates) : kept.Count;
+        for (int i = 0; i < identityCandidates; i++)
+        {
+            DetectionCandidate candidate = kept[i];
+            var box = new Rect(
+                candidate.CenterX - candidate.Width * 0.5f,
+                candidate.CenterY - candidate.Height * 0.5f,
+                candidate.Width,
+                candidate.Height);
+            _trackerCandidates.Add(new PersonTargetTracker.Candidate
+            {
+                Box = box,
+                Score = candidate.Score,
+                Signature = _reidWorker == null && _appearancePixels != null
+                    ? AppearanceSignature.Compute(_appearancePixels, AppearanceWidth, AppearanceHeight, box)
+                    : null
+            });
+        }
+
+        float captureTime = _yoloCaptureTime;
+        if (_reidWorker == null)
+        {
+            ResolveTarget(kept, crop, captureTime);
+            return;
+        }
+
+        _identityPending = true;
+        EmbedCandidate(0, kept, crop, captureTime, generation);
+    }
+
+    /// <summary>Runs OSNet on one person crop after another, then resolves the target identity.</summary>
+    void EmbedCandidate(int index, List<DetectionCandidate> kept, Rect crop, float captureTime, int generation)
+    {
+        if (this == null || generation != _resetGeneration)
+        {
+            _identityPending = false;
+            return;
+        }
+
+        if (index >= _trackerCandidates.Count)
+        {
+            _identityPending = false;
+            ResolveTarget(kept, crop, captureTime);
+            return;
+        }
+
+        Rect box = _trackerCandidates[index].Box;
+        // Box is top-left normalized inside the crop; Blit offsets are bottom-left UVs of the full texture.
+        var scale = new Vector2(box.width * crop.width, box.height * crop.height);
+        var offset = new Vector2(crop.x + box.x * crop.width, crop.y + (1f - box.yMax) * crop.height);
+        Graphics.Blit(rgbInput, _reidInputTexture, scale, offset);
+        TextureConverter.ToTensor(_reidInputTexture, _reidInput, new TextureTransform());
+        _reidWorker.Schedule(_reidInput);
+        if (_reidWorker.PeekOutput() is not Tensor<float> output)
+            throw new System.InvalidOperationException("[DroneFollowSentisPerception] The re-identification model must produce a float tensor.");
+
+        var awaiter = output.ReadbackAndCloneAsync().GetAwaiter();
+        awaiter.OnCompleted(() =>
+        {
+            using Tensor<float> embedding = awaiter.GetResult();
+            if (this == null || generation != _resetGeneration)
+            {
+                _identityPending = false;
+                return;
+            }
+            PersonTargetTracker.Candidate candidate = _trackerCandidates[index];
+            candidate.Signature = embedding.DownloadToArray();
+            _trackerCandidates[index] = candidate;
+            EmbedCandidate(index + 1, kept, crop, captureTime, generation);
+        });
+    }
+
+    void ResolveTarget(List<DetectionCandidate> kept, Rect crop, float captureTime)
+    {
+        int targetIndex = Tracker.Select(_trackerCandidates, Time.time, autoLockTarget);
+        if (targetIndex < 0)
+        {
+            PublishDetection(DroneTargetDetection.None(captureTime), Rect.zero);
+            return;
+        }
+
+        DetectionCandidate best = kept[targetIndex];
         if (randomizeDetections)
         {
             best.CenterX += Gaussian() * detectionCenterJitter * 0.5f;
@@ -685,7 +850,7 @@ public sealed class DroneFollowSentisPerception :
             1f - best.CenterY * 2f,
             best.Height,
             true,
-            _yoloCaptureTime);
+            captureTime);
         var viewportBox = new Rect(
             crop.x + (best.CenterX - best.Width * 0.5f) * crop.width,
             crop.y + (1f - best.CenterY - best.Height * 0.5f) * crop.height,
@@ -758,6 +923,8 @@ public sealed class DroneFollowSentisPerception :
 
     public void ResetDetection()
     {
+        if (autoLockTarget)
+            Tracker.Reset();
         _resetGeneration++;
         _delayedDetections.Clear();
         _episodeDetectionLatency = Random.Range(detectionLatencyRangeSeconds.x, detectionLatencyRangeSeconds.y);

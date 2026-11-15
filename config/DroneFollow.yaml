@@ -1,22 +1,28 @@
-# DroneFollow PPO, warm-started by behavioral cloning from the manual demo.
+# DroneFollow PPO, warm-started by behavioral cloning and GAIL from scripted-expert demonstrations
+# (DroneDetect > DroneFollow > Record Scripted Expert Demonstration). The expert uses ground truth only
+# to choose its actions; the recorded observations are exactly what the policy sees.
 # Policy inputs: 19 vector observations + 84x84 grayscale MiDaS depth;
 # outputs: four continuous actions and one discrete (land) branch.
-# WHY(sim-to-real): the demo was recorded before the camera/heading/gyro fixes, so its observations
-# differ from the current sim. BC only nudges the start (weaker, shorter); GAIL would reward
-# reproducing the stale observation distribution and is therefore disabled.
 behaviors:
   DroneFollow:
     trainer_type: ppo
     behavioral_cloning:
       demo_path: results/demonstrations/DroneFollowDemo.demo
-      strength: 0.5
-      steps: 100000
+      strength: 1.0
+      steps: 150000
       batch_size: 128
       num_epoch: 5
     reward_signals:
       extrinsic:
         gamma: 0.995
         strength: 1.0
+      gail:
+        demo_path: results/demonstrations/DroneFollowDemo.demo
+        strength: 0.3
+        gamma: 0.99
+        encoding_size: 128
+        use_actions: true
+        learning_rate: 0.0003
     hyperparameters:
       batch_size: 256
       buffer_size: 4096

@@ -148,7 +148,8 @@ public sealed class DroneFollowAgent : Agent
                 this);
         }
 
-        DroneFollowHUD.CreateHUD(this);
+        if (!deploymentMode)
+            DroneFollowHUD.CreateHUD(this);
     }
 
     public override void OnEpisodeBegin()
