@@ -85,7 +85,6 @@ public sealed class DroneFollowSentisPerception :
     Tensor<float> _depthInput;
     Tensor<float> _yoloInput;
     Camera _camera;
-    Material _inputTransform;
     RenderTexture _depthInputTexture;
     RenderTexture _yoloInputTexture;
     Texture2D _depthOutputTexture;
@@ -96,6 +95,8 @@ public sealed class DroneFollowSentisPerception :
     float _depthLow;
     float _depthHigh;
     bool _hasDepthRange;
+    bool _dumpRequested;
+    string _dumpDirectory;
     DroneTargetDetection _current = DroneTargetDetection.None();
     Rect _currentViewportBox;
     bool _hasCurrentViewportBox;
@@ -172,12 +173,6 @@ public sealed class DroneFollowSentisPerception :
             _yoloInputTexture = CreateInputTexture(yoloInputSize, "DroneFollow_YOLO_Input", RenderTextureFormat.ARGB32);
         }
 
-        Shader inputShader = Shader.Find("DroneDetect/SentisModelInput");
-        if (inputShader == null)
-            Debug.LogError("[DroneFollowSentisPerception] SentisModelInput shader was not found.", this);
-        else
-            _inputTransform = new Material(inputShader);
-
 
         if (rgbInput == null)
             Debug.LogError("[DroneFollowSentisPerception] Assign the Main Camera RGB RenderTexture.", this);
@@ -199,11 +194,6 @@ public sealed class DroneFollowSentisPerception :
         _depthWorker = null;
         _yoloWorker?.Dispose();
         _yoloWorker = null;
-        if (_inputTransform != null)
-        {
-            Destroy(_inputTransform);
-            _inputTransform = null;
-        }
         _depthInput?.Dispose();
         _depthInput = null;
         _yoloInput?.Dispose();
@@ -242,7 +232,7 @@ public sealed class DroneFollowSentisPerception :
 
     void ProcessCameraFrame()
     {
-        if (rgbInput == null || _inputTransform == null)
+        if (rgbInput == null)
             return;
 
         Rect crop = GetInputCrop(rgbInput);
@@ -251,6 +241,9 @@ public sealed class DroneFollowSentisPerception :
             _nextDepthInferenceTime = Time.time + 1f / Mathf.Max(1f, depthInferenceRateHz);
             PrepareInput(rgbInput, _depthInputTexture, crop);
             TextureConverter.ToTensor(_depthInputTexture, _depthInput, new TextureTransform());
+            bool dumpThisFrame = _dumpRequested;
+            if (dumpThisFrame)
+                DumpModelInput();
             _depthWorker.Schedule(_depthInput);
             if (_depthWorker.PeekOutput() is not Tensor<float> output)
                 throw new System.InvalidOperationException("[DroneFollowSentisPerception] MiDaS must produce a float tensor.");
@@ -265,6 +258,8 @@ public sealed class DroneFollowSentisPerception :
                 _depthPending = false;
                 using Tensor<float> readable = awaiter.GetResult();
                 CompleteDepthReadback(readable, generation, frameAspect);
+                if (dumpThisFrame)
+                    DumpDepthResult(readable);
             });
         }
 
@@ -293,9 +288,9 @@ public sealed class DroneFollowSentisPerception :
 
     void PrepareInput(RenderTexture source, RenderTexture target, Rect crop)
     {
-        _inputTransform.SetVector("_CropScale", CropScale(crop));
-        _inputTransform.SetVector("_CropOffset", CropOffset(crop));
-        Graphics.Blit(source, target, _inputTransform);
+        // WHY(midas-quality, blit): the custom crop shader never received _MainTex and fed both models flat 0.5 gray;
+        // the built-in scale/offset Blit does the same crop without a material.
+        Graphics.Blit(source, target, CropScale(crop), CropOffset(crop));
     }
 
     void CompleteDepthReadback(Tensor<float> readable, int generation, float frameAspect)
@@ -351,6 +346,82 @@ public sealed class DroneFollowSentisPerception :
         _depthOutputTexture.Apply(false, false);
         if (depthOutput != null)
             Graphics.Blit(_depthOutputTexture, depthOutput);
+    }
+
+    [ContextMenu("Dump Next Perception Frame")]
+    void RequestPerceptionDump()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogError("[DroneFollowSentisPerception] Enter Play mode before dumping a perception frame.", this);
+            return;
+        }
+
+        _dumpRequested = true;
+    }
+
+    void DumpModelInput()
+    {
+        _dumpRequested = false;
+        _dumpDirectory = System.IO.Path.Combine(
+            Application.dataPath, "..", "Logs", "PerceptionDebug", System.DateTime.Now.ToString("yyyyMMdd-HHmmss"));
+        System.IO.Directory.CreateDirectory(_dumpDirectory);
+        SaveRenderTexture(rgbInput, "1_rgb_input.png");
+        SaveRenderTexture(_depthInputTexture, "2_midas_model_input.png");
+
+        using Tensor<float> input = _depthInput.ReadbackAndClone();
+        float[] values = input.DownloadToArray();
+        int plane = values.Length / 3;
+        var report = new System.Text.StringBuilder();
+        report.AppendLine($"rgbInput {rgbInput.width}x{rgbInput.height} format={rgbInput.format} created={rgbInput.IsCreated()} cameraTarget={(observationCamera != null ? observationCamera.targetTexture?.name : "none")}");
+        report.AppendLine($"framing={inputFraming} crop={GetInputCrop(rgbInput)} midasInput={_depthInput.shape}");
+        for (int channel = 0; channel < 3; channel++)
+        {
+            float min = float.MaxValue, max = float.MinValue, sum = 0f;
+            for (int i = channel * plane; i < (channel + 1) * plane; i++)
+            {
+                min = Mathf.Min(min, values[i]);
+                max = Mathf.Max(max, values[i]);
+                sum += values[i];
+            }
+            report.AppendLine($"input channel {channel}: min={min:F4} max={max:F4} mean={sum / plane:F4}");
+        }
+
+        System.IO.File.WriteAllText(System.IO.Path.Combine(_dumpDirectory, "report.txt"), report.ToString());
+    }
+
+    void DumpDepthResult(Tensor<float> readable)
+    {
+        float[] values = readable.DownloadToArray();
+        float min = float.MaxValue, max = float.MinValue;
+        foreach (float value in values)
+        {
+            min = Mathf.Min(min, value);
+            max = Mathf.Max(max, value);
+        }
+
+        System.IO.File.AppendAllText(
+            System.IO.Path.Combine(_dumpDirectory, "report.txt"),
+            $"midas output {readable.shape}: min={min:F3} max={max:F3} normalizedRange=[{_depthLow:F3}, {_depthHigh:F3}] invert={invertDepth}\n");
+        if (_depthPreviewTexture != null)
+            System.IO.File.WriteAllBytes(System.IO.Path.Combine(_dumpDirectory, "3_depth_preview.png"), _depthPreviewTexture.EncodeToPNG());
+        System.IO.File.WriteAllBytes(System.IO.Path.Combine(_dumpDirectory, "4_depth_observation_84.png"), _depthOutputTexture.EncodeToPNG());
+        Debug.Log($"[DroneFollowSentisPerception] Perception frame dumped to {System.IO.Path.GetFullPath(_dumpDirectory)}", this);
+    }
+
+    void SaveRenderTexture(RenderTexture source, string fileName)
+    {
+        RenderTexture previous = RenderTexture.active;
+        RenderTexture temporary = RenderTexture.GetTemporary(source.width, source.height, 0, RenderTextureFormat.ARGB32);
+        Graphics.Blit(source, temporary);
+        RenderTexture.active = temporary;
+        var texture = new Texture2D(source.width, source.height, TextureFormat.RGB24, false);
+        texture.ReadPixels(new Rect(0, 0, source.width, source.height), 0, 0);
+        texture.Apply();
+        RenderTexture.active = previous;
+        RenderTexture.ReleaseTemporary(temporary);
+        System.IO.File.WriteAllBytes(System.IO.Path.Combine(_dumpDirectory, fileName), texture.EncodeToPNG());
+        Destroy(texture);
     }
 
     void UpdateDepthRange(float[] values)
