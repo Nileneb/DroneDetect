@@ -3589,8 +3589,8 @@ Camera:
   m_GameObject: {fileID: 193520}
   m_Enabled: 1
   serializedVersion: 2
-  m_ClearFlags: 1
-  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_ClearFlags: 2
+  m_BackGroundColor: {r: 0, g: 0, b: 0, a: 1}
   m_projectionMatrixMode: 1
   m_GateFitMode: 2
   m_FOVAxisMode: 0
@@ -3616,19 +3616,19 @@ Camera:
   field of view: 60
   orthographic: 0
   orthographic size: 5
-  m_Depth: 0
+  m_Depth: -100
   m_CullingMask:
     serializedVersion: 2
-    m_Bits: 4294967295
+    m_Bits: 0
   m_RenderingPath: -1
   m_TargetTexture: {fileID: 0}
   m_TargetDisplay: 0
   m_TargetEye: 3
-  m_HDR: 1
-  m_AllowMSAA: 1
+  m_HDR: 0
+  m_AllowMSAA: 0
   m_AllowDynamicResolution: 0
   m_ForceIntoRT: 0
-  m_OcclusionCulling: 1
+  m_OcclusionCulling: 0
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
 --- !u!1 &195556
@@ -3824,12 +3824,17 @@ MonoBehaviour:
   midasLargeInputSize: 384
   midasSmallInputSize: 256
   yoloInputSize: 640
+  inputFraming: 0
   observationCamera: {fileID: 6556434112560700788}
   rgbInput: {fileID: 8400000, guid: d18729f281c3494593906ee58b7942a1, type: 2}
   depthOutput: {fileID: 8400000, guid: 639d8b84aa10ba50695f52c50ac9338d, type: 2}
   depthPreview: {fileID: 0}
   depthInferenceRateHz: 15
   detectionInferenceRateHz: 10
+  depthNormalization: 0
+  lowDepthPercentile: 0.02
+  highDepthPercentile: 0.98
+  depthRangeAdaptation: 0.3
   minimumDepthValue: 0
   maximumDepthValue: 4096
   invertDepth: 1
