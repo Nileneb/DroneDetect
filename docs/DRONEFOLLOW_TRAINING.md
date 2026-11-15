@@ -74,6 +74,17 @@ reduces control authority; reaching terminal damage or entering Emergency ends
 the episode with the terminal crash penalty. Collision damage is disabled once
 controlled landing has started.
 
+## Recording demonstrations with the scripted expert
+
+**DroneDetect > DroneFollow > Record Scripted Expert Demonstration** flies a
+ground-truth PD follower (`DroneFollowAgent.WriteExpertAction`) through random
+curriculum stages at training speed (`time_scale` 4, 60 captured frames per
+second) and records 30 000 decisions; stop Play mode earlier to keep a shorter
+recording. The expert only chooses the actions – the recorded observations are
+exactly the camera/YOLO/MiDaS/navdata observations the policy gets, so behavioral
+cloning and GAIL learn from the current sensor contract. Recordings made before
+a sensor change must be re-recorded.
+
 ## Recording a manual demonstration
 
 With the training scene open and the ML-Agents trainer stopped, select
@@ -93,7 +104,7 @@ been created; the previous training demo remains available if recording or
 publishing fails. This is the path already configured for behavioral cloning.
 
 After recording, start a new trainer run to load the updated demo; a trainer
-that is already running does not reload demonstration files. `config/DroneFollow.yaml` warm-starts PPO with behavioral cloning from the
+that is already running does not reload demonstration files. `config/DroneFollow.yaml` warm-starts PPO with behavioral cloning and GAIL from the
 recording. Start it with:
 
 ```sh

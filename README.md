@@ -1,37 +1,92 @@
-# DroneDetect
+# DroneDetect – a drone that follows you, trained in simulation
 
-Unity-6 simulation for training a drone with **ML-Agents** to follow a person.
-The drone perceives the world only through its own camera: **MiDaS** estimates a
-depth map and **YOLOv8** detects people. Both run on-device via
-**Unity Inference Engine (Sentis)**.
+A reinforcement-learning policy, trained entirely in a Unity simulation, flies a
+real **Parrot AR.Drone 2.0** behind a person. An Android phone is the ground
+station: it receives the drone's video over Wi-Fi, runs all neural networks
+on-device with **Unity Inference Engine (Sentis)**, and sends the flight
+commands back.
+
+The policy never sees ground truth. It perceives the world the way the real
+drone does – through its front camera:
 
 ```
-Main Camera ──► MainCameraRGB (640×360)
-                   ├─► MiDaS  ──► 84×84 grayscale depth ──► policy observation
-                   │                 └─► PiP "Depth" preview (full model resolution)
-                   └─► YOLOv8n ─► best person box ──► policy observation + HUD
+                 ┌─────────────── simulation (training) ───────────────┐
+                 │  Unity scene + AR.Drone physics twin + moving person │
+                 └──────────────────────────┬──────────────────────────┘
+                                            │ same observation contract
+front camera 640×360 ──┬─► MiDaS v2.1 small ─► 84×84 relative depth ──────────┐
+                       └─► YOLOv8n ─► person boxes ─► target tracker ─► box ──┤
+navdata (altitude, velocity, attitude, rates) ────────────────────────────────┤
+                                                                               ▼
+                                         PPO policy (+ BC/GAIL warm start)  ──► forward, left, up, turn
+                                                                               │
+                         safety envelope (shadow mode, lost-target hover, ceiling, battery, link)
+                                                                               ▼
+                                                              AT*PCMD over Wi-Fi → AR.Drone 2.0
 ```
+
+## What is in here
+
+| Part | Where |
+|---|---|
+| Policy agent, rewards, curriculum, deployment mode | `Assets/Scripts/DroneFollowAgent.cs` |
+| Perception: MiDaS depth, YOLO persons, re-identification | `Assets/Scripts/DroneFollowSentisPerception.cs`, `PersonTargetTracker.cs` |
+| AR.Drone 2.0 physics twin (simulator) | `Assets/Scripts/SimulatedDroneController.cs` |
+| AR.Drone 2.0 driver: AT commands, navdata, H.264 video | `Assets/Scripts/ArDrone/` |
+| Android ground-station UI and MediaCodec decoder | `Assets/Scripts/ArDrone/GroundStationUI.cs`, `Assets/Plugins/Android/` |
+| Scene setup, scripted-expert demos, builds | `Assets/Editor/` |
+| Training configuration | `config/DroneFollow.yaml`, `tools/train.sh` |
+| Tests (wire format, sign conventions, tracker) | `Assets/Editor/Tests/` |
+
+## Sim-to-real: what keeps the trained policy valid on hardware
+
+- **Same sensors, same conventions.** Sim and drone implement one
+  `IDroneController`; navdata is mapped to the simulator's axes and signs
+  (unit-tested). Attitude rates are derived from navdata in both worlds because
+  the AR.Drone's demo navdata has no gyro; heading is relative to takeoff.
+- **Same camera.** The sim camera sits at the drone's nose, looks along the
+  flight axis and uses the AR.Drone's 53.8° vertical FOV at 640×360.
+- **Perception is pre-trained, not learned from sim pixels.** The policy sees
+  MiDaS depth and a YOLO box – abstractions that look alike for rendered and
+  real images – instead of raw RGB.
+- **Imperfections during training.** 50–250 ms detection latency (Wi-Fi video +
+  phone inference), 8 % missed detections, box jitter, randomized motor response,
+  random start heading, wind.
+- **Matched limits.** The physics twin uses the AR.Drone's defaults (12° tilt,
+  0.7 m/s climb, 100°/s yaw), and the driver configures the real drone to them.
+
+## Who to follow: target identity
+
+YOLO finds every person; the drone must follow one. On the phone the operator
+taps the person once. From then on `PersonTargetTracker` picks, every frame, the
+detection that matches both the target's recent position and its appearance
+gallery: up to 40 **OSNet** re-identification embeddings collected from the
+different views seen while tracking was certain. If the target disappears behind
+someone, it is re-acquired by appearance rather than by position. Embeddings are
+a few hundred floats per view, so the gallery is a plain in-memory array
+compared by cosine similarity – no vector database needed.
 
 ## Requirements
 
 | | Version |
 |---|---|
-| Unity | 6000.6.1f1 |
+| Unity | 6000.6.1f1 with Android Build Support |
 | `com.unity.ai.inference` (Sentis) | 2.6.1 |
-| `com.unity.ml-agents` | 4.2.0 |
-| Python trainer | `mlagents` matching the package (see `config/`) |
+| `com.unity.ml-agents` | 4.2.0, Python `mlagents` 1.1 (conda env `mlagents`) |
+| Hardware | Parrot AR.Drone 2.0, Android phone (ARM64, Vulkan) |
 
-## Models (download once)
+## Models
 
-The ONNX models are **not in git** (too large, see `.gitignore`). Their `.meta`
-files are committed, so after downloading them into `Assets/Models/` Unity keeps
-all prefab/scene references intact.
+`osnet_reid.onnx` (OSNet x1.0, Market-1501, MIT, from
+[Qualcomm AI Hub](https://huggingface.co/qualcomm/OSNet), merged into one file)
+and the trained policy `DroneFollow.onnx` are committed. MiDaS and YOLO are too
+large for git; download them once into `Assets/Models/`:
 
 | File | Purpose | Input | Source |
 |---|---|---|---|
-| `model-small.onnx` | MiDaS v2.1 small – default depth model | 1×3×256×256 | [isl-org/MiDaS · release v2_1](https://github.com/isl-org/MiDaS/releases/tag/v2_1) |
-| `model-f6b98070.onnx` | MiDaS v2.1 large – optional, sharper, slower | 1×3×384×384 | [isl-org/MiDaS · release v2_1](https://github.com/isl-org/MiDaS/releases/tag/v2_1) |
-| `yolov8n.onnx` | YOLOv8n COCO – person detection | 1×3×640×640 | [212534/Unity-Sentis-YOLOv8](https://github.com/212534/Unity-Sentis-YOLOv8) |
+| `model-small.onnx` | MiDaS v2.1 small – depth | 1×3×256×256 | [isl-org/MiDaS · v2_1](https://github.com/isl-org/MiDaS/releases/tag/v2_1) |
+| `model-f6b98070.onnx` | MiDaS v2.1 large – optional | 1×3×384×384 | [isl-org/MiDaS · v2_1](https://github.com/isl-org/MiDaS/releases/tag/v2_1) |
+| `yolov8n.onnx` | YOLOv8n COCO – persons | 1×3×640×640 | [212534/Unity-Sentis-YOLOv8](https://github.com/212534/Unity-Sentis-YOLOv8) |
 
 ```bash
 cd Assets/Models
@@ -45,47 +100,34 @@ sha256sum -c <<'EOF'
 EOF
 ```
 
-`DroneCSI.onnx` (a trained policy from this project) is committed normally.
+The Meshy-generated scenery GLBs (`Assets/Environment/TreesGLB/*.glb`,
+`Assets/Environment/RocksGLB/*.glb`, 26–162 MB each) are not in git either;
+copy them from an existing checkout (their `.meta` files are committed).
 
-### Scenery assets
+## Getting started
 
-The Meshy-generated GLB trees and rocks (`Assets/Environment/TreesGLB/*.glb`,
-`Assets/Environment/RocksGLB/*.glb`, 26–162 MB each) are also **not in git** –
-GitHub rejects files over 100 MB. Copy them from an existing checkout into the
-same folders; their `.meta` files are committed.
+```bash
+git config core.hooksPath tools/git-hooks   # optional: push after every commit
+```
 
-## Quickstart
-
-1. Download the models (above), open `Assets/Scenes/Agent1.unity`.
-2. Run **DroneDetect → Configure Active Scene for DroneFollow** – wires camera,
-   models, depth sensor and HUD previews.
-3. Press Play – Screen 2 shows the MiDaS depth, Screen 1 the YOLO person box.
-
-Training, curriculum and Android builds:
-
-- [docs/DRONEFOLLOW_QUICKSTART.md](docs/DRONEFOLLOW_QUICKSTART.md) – setup and starting a training run
-- [docs/DRONEFOLLOW_TRAINING.md](docs/DRONEFOLLOW_TRAINING.md) – rewards, observations, Sentis perception details
-- [docs/ANDROID_INFERENCE_BUILD.md](docs/ANDROID_INFERENCE_BUILD.md) – on-device inference build
+- Training: [docs/DRONEFOLLOW_QUICKSTART.md](docs/DRONEFOLLOW_QUICKSTART.md),
+  details in [docs/DRONEFOLLOW_TRAINING.md](docs/DRONEFOLLOW_TRAINING.md)
+- Phone app and flying the real drone: [docs/ANDROID_INFERENCE_BUILD.md](docs/ANDROID_INFERENCE_BUILD.md)
 
 ## Perception notes
 
-- **Framing:** the full 16:9 camera frame is stretched into each model's square
-  input (`inputFraming = FullFrameStretch`). A square center crop would drop the
-  outer ~44 % of the image, including people at the edges.
-- **Depth normalization:** MiDaS outputs *relative* inverse depth with an
-  arbitrary scale (small model ≈ 60–1200, large ≈ 0–6000). Each frame is mapped
-  from its 2nd–98th percentile to 0–1, temporally smoothed via
-  `depthRangeAdaptation`.
-- **No ImageNet mean/std** on the input – an A/B test on this scene gave
-  sharper depth with plain 0–1 RGB.
+- **Framing:** the full 16:9 frame is stretched into each model's square input;
+  a center crop would drop the outer ~44 % where people often are.
+- **Depth normalization:** MiDaS outputs relative inverse depth with arbitrary
+  scale; each frame is mapped from its 2nd–98th percentile to 0–1 with temporal
+  smoothing.
 
 ## Credits & licenses
 
-- **MiDaS** – Ranftl et al., *Towards Robust Monocular Depth Estimation*, Intel ISL,
-  MIT License – <https://github.com/isl-org/MiDaS>
-- **YOLOv8** – Ultralytics, **AGPL-3.0**. The ONNX export comes from
+- **MiDaS** – Ranftl et al., Intel ISL, MIT – <https://github.com/isl-org/MiDaS>
+- **YOLOv8** – Ultralytics, **AGPL-3.0**; ONNX export from
   [212534/Unity-Sentis-YOLOv8](https://github.com/212534/Unity-Sentis-YOLOv8).
-  Check the AGPL obligations before redistributing a build or offering it as a
-  network service.
-- MiDaS-in-Sentis reference implementation:
-  [Yupopyoi/MiDaS_UnitySentis](https://github.com/Yupopyoi/MiDaS_UnitySentis)
+  Check the AGPL obligations before redistributing a build.
+- **OSNet** – Zhou et al., *Omni-Scale Feature Learning for Person
+  Re-Identification*, MIT; ONNX export by Qualcomm AI Hub.
+- MiDaS-in-Sentis reference: [Yupopyoi/MiDaS_UnitySentis](https://github.com/Yupopyoi/MiDaS_UnitySentis)

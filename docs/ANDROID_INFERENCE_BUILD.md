@@ -1,47 +1,42 @@
-# Android inference build preparation
+# Android ground station
 
-`tools/build_android_inference.sh` is intentionally outside `Assets/`. Invoking
-it without `--build` only checks the scene path and Unity Android Build Support;
-it never launches Unity or causes an editor recompile.
+The phone is the ground station: it joins the AR.Drone 2.0's Wi-Fi, decodes the
+front-camera video, runs MiDaS, YOLO, OSNet and the trained policy with Sentis,
+and sends AT commands back to the drone.
 
-When a separate inference scene is ready:
+```
+AR.Drone 2.0 ── H.264 (TCP 5555) ──► MediaCodec ──► RGBA frame ──► MiDaS (84×84 depth) ─┐
+             ── navdata (UDP 5554) ─────────────────────────────────────────────────────┤
+                                                    YOLO ─► target tracker (tap + OSNet) ─┤
+             ◄── AT*PCMD 30 Hz (UDP 5556) ◄── safety envelope ◄── DroneFollow policy ◄────┘
+```
 
-1. Stop Play mode and the ML-Agents trainer.
-2. Configure that scene with exactly one active `DroneFollowAgent`, a trained
-   DroneFollow model assigned to its `BehaviorParameters`, `Behavior Type` set
-   to `Inference Only`, a matching `DecisionRequester`, and a grayscale
-   84x84 depth sensor connected to the camera depth output.
-3. Implement and attach the production `IDroneController` adapter. The
-   training scene uses `DroneFollowSentisPerception` on Main Camera for MiDaS
-   depth and YOLO person detection. Configure that component and the same model
-   assets in any separate inference scene; setup configures only the active
-   DroneFollow training scene.
-4. Install Android Build Support (SDK, NDK, and OpenJDK) for the project's
-   Unity version in Unity Hub.
-5. Run a read-only preflight:
+## Build
 
-   ```bash
-   ./tools/build_android_inference.sh \
-     --scene Assets/Scenes/DroneFollowAndroid.unity
-   ```
+1. Copy the trained policy: `cp results/<run-id>/DroneFollow.onnx Assets/Models/DroneFollow.onnx`.
+2. In Unity: **DroneDetect → Build → Android Ground Station APK** (or batch mode:
+   `Unity -batchmode -quit -projectPath . -buildTarget Android -executeMethod DroneFollowBuild.BuildAndroidGroundStation`).
+   This regenerates `Assets/Scenes/DroneFollowAndroid.unity` and writes
+   `Builds/Android/DroneFollowGroundStation.apk` (IL2CPP, ARM64, Vulkan).
+3. `adb install -r Builds/Android/DroneFollowGroundStation.apk`.
 
-6. Only after training is stopped, explicitly request the build:
+Do not build on the machine while training runs in its editor: a second Unity
+instance froze the whole system once.
 
-   ```bash
-   ./tools/build_android_inference.sh \
-     --scene Assets/Scenes/DroneFollowAndroid.unity \
-     --output Builds/DroneFollowAndroid.apk \
-     --build
-   ```
+## Flying
 
-The build command refuses to run while a Unity editor/build process for this
-project or an ML-Agents trainer working in this project is active. It adds a
-temporary Unity Editor build entry point only for the batch build and removes
-it afterward. The selected scene must already reference its policy and
-inference components; the script does not download or convert models.
+1. Connect the phone to the drone's `ardrone2_xxxxxx` Wi-Fi, start the app.
+   The status line shows navdata and the video frame counter.
+2. **Shadow mode is on by default**: the policy runs and its commands are shown,
+   but the drone only hovers. Take off, tap yourself in the video to lock the
+   target, walk around and check that the displayed commands point the right way.
+3. Switch shadow mode off. The drone follows; if the target is lost for 1.5 s it
+   hovers, it never climbs above 2.5 m, and it lands on low battery, link loss
+   or when the app goes to the background. **EMERGENCY** cuts the motors.
 
-The Sentis package is declared directly at version 2.6.1. The MiDaS output is
-adapted to the policy's existing 84x84 grayscale depth input, and YOLO person
-boxes to the four-value target-detection contract. The provided YOLO ONNX
-metadata identifies its license as AGPL-3.0; verify the model's obligations
-before redistributing the project or offering it as a network service.
+## Testing without the phone
+
+In the Editor (Linux/macOS/Windows with `ffmpeg` on PATH) the same scene runs
+against the real drone from a laptop on the drone's Wi-Fi: open
+`DroneFollowAndroid.unity` and press Play. EditMode tests cover the AT/navdata/PaVE
+wire format, the sim↔drone sign conventions and the target tracker.
