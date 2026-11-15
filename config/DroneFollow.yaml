@@ -72,7 +72,6 @@ env_settings:
 # maximum flight duration. The agent rewards improvement and stable following,
 # then awards flightCompletionReward only after the stage duration is survived.
 
-# Keep editor training at real time so accelerated physics does not starve
-# the Unity Editor's ML-Agents step/response loop.
+# Use a modest 20% acceleration while keeping the Unity Editor responsive.
 engine_settings:
-  time_scale: 1
+  time_scale: 1.2

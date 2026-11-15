@@ -11,10 +11,11 @@ When a separate inference scene is ready:
    DroneFollow model assigned to its `BehaviorParameters`, `Behavior Type` set
    to `Inference Only`, a matching `DecisionRequester`, and a grayscale
    84x84 depth sensor connected to the camera depth output.
-3. Implement and attach the production `IDroneFollowController` and
-   `IDroneTargetDetectionSource` adapters. The current detector in the training
-   scene is a simulation surrogate; there is no YOLO or real-drone controller
-   implementation in this repository yet.
+3. Implement and attach the production `IDroneFollowController` adapter. The
+   training scene uses `DroneFollowSentisPerception` on Main Camera for MiDaS
+   depth and YOLO person detection. Configure that component and the same model
+   assets in any separate inference scene; setup configures only the active
+   DroneFollow training scene.
 4. Install Android Build Support (SDK, NDK, and OpenJDK) for the project's
    Unity version in Unity Hub.
 5. Run a read-only preflight:
@@ -37,11 +38,10 @@ The build command refuses to run while a Unity editor/build process for this
 project or an ML-Agents trainer working in this project is active. It adds a
 temporary Unity Editor build entry point only for the batch build and removes
 it afterward. The selected scene must already reference its policy and
-inference components; the script does not download, convert, or invent YOLO or
-depth-estimation models.
+inference components; the script does not download or convert models.
 
-The simulation's Unity depth buffer is not a monocular depth-estimation model.
-For a real camera feed, provide a compatible depth sensor or integrate a
-depth-estimation model and adapt its output to the policy's depth input. The
-YOLO output must likewise be adapted to the four-value target-detection
-contract used by `DroneFollowAgent`.
+The Sentis package is declared directly at version 2.6.1. The MiDaS output is
+adapted to the policy's existing 84x84 grayscale depth input, and YOLO person
+boxes to the four-value target-detection contract. The provided YOLO ONNX
+metadata identifies its license as AGPL-3.0; verify the model's obligations
+before redistributing the project or offering it as a network service.

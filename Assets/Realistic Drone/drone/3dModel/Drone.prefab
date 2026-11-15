@@ -3340,9 +3340,9 @@ GameObject:
   - component: {fileID: 494212966767916215}
   - component: {fileID: 7640018841349597378}
   - component: {fileID: 4437751787148306321}
-  - component: {fileID: 2292867821588736545}
   - component: {fileID: 4314018144792344736}
   - component: {fileID: 3696032835637371694}
+  - component: {fileID: 5323236974604365881}
   m_Layer: 0
   m_Name: Drone
   m_TagString: Player
@@ -3520,27 +3520,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f8d2f7db6cd24d43a9d8bb5dd0e30002, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SimulatedDroneFollowControllerAdapter
---- !u!114 &2292867821588736545
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 193520}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f8d2f7db6cd24d43a9d8bb5dd0e30003, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::SimulatedBoundingBoxDetector
-  observationCamera: {fileID: 6556434112560700788}
-  target: {fileID: 0}
-  sampleRateHz: 10
-  dropoutProbability: 0.05
-  centerNoise: 0.015
-  heightNoise: 0.015
-  minLatencySeconds: 0.1
-  maxLatencySeconds: 0.2
-  maxDetectionAgeSeconds: 0.4
 --- !u!114 &4314018144792344736
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3557,6 +3536,7 @@ MonoBehaviour:
     maxStep: 0
   hasUpgradedFromAgentParameters: 1
   MaxStep: 0
+  perception: {fileID: 8249013350055823601}
   followTarget: {fileID: 0}
   desiredAltitude: 1.5
   desiredDistanceMin: 2
@@ -3564,6 +3544,7 @@ MonoBehaviour:
   altitudeRewardWeight: 0.12
   distanceRewardWeight: 0.25
   centeringRewardWeight: 0.15
+  centeredTargetReward: 0.03
   followHoldReward: 0.015
   lostDetectionPenalty: 0.005
   smoothActionPenalty: 0.0005
@@ -3599,6 +3580,57 @@ MonoBehaviour:
   m_Grayscale: 1
   m_ObservationStacks: 1
   m_Compression: 0
+--- !u!20 &5323236974604365881
+Camera:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 193520}
+  m_Enabled: 1
+  serializedVersion: 2
+  m_ClearFlags: 1
+  m_BackGroundColor: {r: 0.19215687, g: 0.3019608, b: 0.4745098, a: 0}
+  m_projectionMatrixMode: 1
+  m_GateFitMode: 2
+  m_FOVAxisMode: 0
+  m_Iso: 200
+  m_ShutterSpeed: 0.005
+  m_Aperture: 16
+  m_FocusDistance: 10
+  m_FocalLength: 50
+  m_BladeCount: 5
+  m_Curvature: {x: 2, y: 11}
+  m_BarrelClipping: 0.25
+  m_Anamorphism: 0
+  m_SensorSize: {x: 36, y: 24}
+  m_LensShift: {x: 0, y: 0}
+  m_NormalizedViewPortRect:
+    serializedVersion: 2
+    x: 0
+    y: 0
+    width: 1
+    height: 1
+  near clip plane: 0.3
+  far clip plane: 1000
+  field of view: 60
+  orthographic: 0
+  orthographic size: 5
+  m_Depth: 0
+  m_CullingMask:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  m_RenderingPath: -1
+  m_TargetTexture: {fileID: 0}
+  m_TargetDisplay: 0
+  m_TargetEye: 3
+  m_HDR: 1
+  m_AllowMSAA: 1
+  m_AllowDynamicResolution: 0
+  m_ForceIntoRT: 0
+  m_OcclusionCulling: 1
+  m_StereoConvergence: 10
+  m_StereoSeparation: 0.022
 --- !u!1 &195556
 GameObject:
   m_ObjectHideFlags: 0
@@ -3699,7 +3731,7 @@ GameObject:
   m_Component:
   - component: {fileID: 7534219773929116359}
   - component: {fileID: 6556434112560700788}
-  - component: {fileID: 8497607243775387401}
+  - component: {fileID: 8249013350055823601}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -3716,7 +3748,7 @@ Transform:
   m_GameObject: {fileID: 7879728912600298561}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0.38268343, z: 0, w: 0.92387956}
-  m_LocalPosition: {x: 0.036046833, y: -0.01999998, z: -0.14072913}
+  m_LocalPosition: {x: 0.163, y: -0.048, z: 0.052}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -3763,7 +3795,7 @@ Camera:
     serializedVersion: 2
     m_Bits: 4294967295
   m_RenderingPath: -1
-  m_TargetTexture: {fileID: 0}
+  m_TargetTexture: {fileID: 8400000, guid: d18729f281c3494593906ee58b7942a1, type: 2}
   m_TargetDisplay: 0
   m_TargetEye: 3
   m_HDR: 1
@@ -3773,7 +3805,7 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
---- !u!114 &8497607243775387401
+--- !u!114 &8249013350055823601
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -3782,14 +3814,27 @@ MonoBehaviour:
   m_GameObject: {fileID: 7879728912600298561}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 1e7c8209e7235a6a9b725902e9fcf3cc, type: 3}
+  m_Script: {fileID: 11500000, guid: 702bff772e834da4a812307c229980c4, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::DroneDepthCamera
+  m_EditorClassIdentifier: Assembly-CSharp::DroneFollowSentisPerception
+  midasLargeModel: {fileID: 5022602860645237092, guid: e3d9fec6439d1fcef97fd7c3ba01054a, type: 3}
+  midasSmallModel: {fileID: 5022602860645237092, guid: 27f6644b7b83c16d4acee0506a17ff12, type: 3}
+  yoloModel: {fileID: 5022602860645237092, guid: 845c8e9c2c2141168e7900b1c058c13d, type: 3}
+  depthModelChoice: 0
+  midasLargeInputSize: 384
+  midasSmallInputSize: 256
+  yoloInputSize: 640
+  observationCamera: {fileID: 6556434112560700788}
+  rgbInput: {fileID: 8400000, guid: d18729f281c3494593906ee58b7942a1, type: 2}
+  depthOutput: {fileID: 8400000, guid: 639d8b84aa10ba50695f52c50ac9338d, type: 2}
   depthPreview: {fileID: 0}
-  outputTexture: {fileID: 8400000, guid: 639d8b84aa10ba50695f52c50ac9338d, type: 2}
-  resolution: 84
-  maxVisualizationDistance: 20
-  updateIntervalSteps: 5
+  depthInferenceRateHz: 15
+  detectionInferenceRateHz: 10
+  minimumDepthValue: 0
+  maximumDepthValue: 4096
+  invertDepth: 1
+  personScoreThreshold: 0.2
+  maxDetectionAgeSeconds: 0.4
 --- !u!1 &7902662538032002566
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,0 +1,664 @@
+using System.Collections.Generic;
+using Unity.InferenceEngine;
+using UnityEngine;
+using UnityEngine.Rendering;
+using UnityEngine.UI;
+
+/// <summary>
+/// Runs MiDaS depth estimation and YOLO person detection on the Main Camera
+/// frame, adapting their outputs to DroneFollow's existing sensors.
+/// </summary>
+[RequireComponent(typeof(Camera))]
+public sealed class DroneFollowSentisPerception :
+    MonoBehaviour,
+    IDroneTargetDetectionSource,
+    IDroneDetectionViewportSource
+{
+    const float PersonBoxIouThreshold = 0.45f;
+    const int MaxPersonBoxesAfterNms = 20;
+
+    struct DetectionCandidate
+    {
+        public float CenterX;
+        public float CenterY;
+        public float Width;
+        public float Height;
+        public float Score;
+    }
+
+    public enum DepthModelChoice
+    {
+        Small,
+        Large
+    }
+
+    public enum InputFraming
+    {
+        FullFrameStretch,
+        CenterCrop
+    }
+
+    public enum DepthNormalization
+    {
+        PerFramePercentile,
+        Fixed
+    }
+
+    [Header("Models")]
+    public ModelAsset midasLargeModel;
+    public ModelAsset midasSmallModel;
+    public ModelAsset yoloModel;
+    public DepthModelChoice depthModelChoice = DepthModelChoice.Small;
+    [Min(32)] public int midasLargeInputSize = 384;
+    [Min(32)] public int midasSmallInputSize = 256;
+    [Min(32)] public int yoloInputSize = 640;
+
+    [Header("Camera input")]
+    // WHY(midas-quality, framing): the square center crop dropped ~44% of the 16:9 frame (people at the edges);
+    // A/B on Agent1 showed stretching the full frame keeps those shapes and beats letterboxing, which wastes resolution.
+    public InputFraming inputFraming = InputFraming.FullFrameStretch;
+    public Camera observationCamera;
+    public RenderTexture rgbInput;
+    public RenderTexture depthOutput;
+    public RawImage depthPreview;
+    [Min(1f)] public float depthInferenceRateHz = 15f;
+    [Min(1f)] public float detectionInferenceRateHz = 10f;
+
+    [Header("MiDaS output")]
+    // WHY(midas-quality, scale): MiDaS emits scale-ambiguous relative inverse depth (small model ~60..1200,
+    // large ~0..6000 on Agent1), so a fixed 0..4096 range collapsed the small model into near-white frames.
+    public DepthNormalization depthNormalization = DepthNormalization.PerFramePercentile;
+    [Range(0f, 0.5f)] public float lowDepthPercentile = 0.02f;
+    [Range(0.5f, 1f)] public float highDepthPercentile = 0.98f;
+    [Tooltip("Weight of the newest frame's percentile range; 1 = no temporal smoothing.")]
+    [Range(0.01f, 1f)] public float depthRangeAdaptation = 0.3f;
+    [Min(0f)] public float minimumDepthValue;
+    [Min(0.01f)] public float maximumDepthValue = 4096f;
+    public bool invertDepth = true;
+
+    [Header("YOLO output")]
+    [Range(0f, 1f)] public float personScoreThreshold = 0.2f;
+    [Min(0.01f)] public float maxDetectionAgeSeconds = 0.4f;
+
+    Worker _depthWorker;
+    Worker _yoloWorker;
+    Tensor<float> _depthInput;
+    Tensor<float> _yoloInput;
+    Camera _camera;
+    Material _inputTransform;
+    RenderTexture _depthInputTexture;
+    RenderTexture _yoloInputTexture;
+    Texture2D _depthOutputTexture;
+    Color32[] _depthPixels;
+    Texture2D _depthPreviewTexture;
+    Color32[] _depthPreviewPixels;
+    float[] _depthSamples;
+    float _depthLow;
+    float _depthHigh;
+    bool _hasDepthRange;
+    DroneTargetDetection _current = DroneTargetDetection.None();
+    Rect _currentViewportBox;
+    bool _hasCurrentViewportBox;
+    bool _depthPending;
+    bool _yoloPending;
+    float _nextDepthInferenceTime;
+    float _nextYoloInferenceTime;
+    float _yoloCaptureTime;
+    int _resetGeneration;
+
+    public int DetectionFramesProcessed { get; private set; }
+    public float LastPersonScore { get; private set; }
+
+    public DroneTargetDetection Current
+    {
+        get
+        {
+            if (!_current.Visible ||
+                Time.time - _current.CaptureTime > maxDetectionAgeSeconds)
+                return DroneTargetDetection.None(Time.time);
+
+            return _current;
+        }
+    }
+
+    void OnEnable()
+    {
+        _camera = GetComponent<Camera>();
+        if (observationCamera == null)
+            observationCamera = _camera;
+
+        ModelAsset depthAsset = depthModelChoice == DepthModelChoice.Small
+            ? midasSmallModel
+            : midasLargeModel;
+        int depthInputSize = depthModelChoice == DepthModelChoice.Small
+            ? midasSmallInputSize
+            : midasLargeInputSize;
+
+        if (depthNormalization == DepthNormalization.Fixed && maximumDepthValue <= minimumDepthValue)
+            Debug.LogError("[DroneFollowSentisPerception] Maximum depth value must exceed minimum depth value.", this);
+
+        if (depthAsset == null)
+            Debug.LogError("[DroneFollowSentisPerception] Assign a MiDaS model to generate the Agent's depth observation.", this);
+        else
+        {
+            Model depthModel = ModelLoader.Load(depthAsset);
+            depthInputSize = ResolveInputSize(depthModel, depthInputSize, "MiDaS");
+            _depthWorker = new Worker(depthModel, BackendType.GPUCompute);
+            _depthInput = new Tensor<float>(new TensorShape(1, 3, depthInputSize, depthInputSize));
+            _depthInputTexture = CreateInputTexture(depthInputSize, "DroneFollow_MiDaS_Input", RenderTextureFormat.ARGBFloat);
+            _depthOutputTexture = new Texture2D(
+                DroneFollowContract.DepthObservationWidth,
+                DroneFollowContract.DepthObservationHeight,
+                TextureFormat.RGB24,
+                false,
+                true)
+            {
+                name = "DroneFollow_MiDaS_Depth",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            _depthPixels = new Color32[
+                DroneFollowContract.DepthObservationWidth * DroneFollowContract.DepthObservationHeight];
+        }
+
+        if (yoloModel == null)
+            Debug.LogError("[DroneFollowSentisPerception] Assign the YOLO model to provide target detections.", this);
+        else
+        {
+            Model detectionModel = ModelLoader.Load(yoloModel);
+            yoloInputSize = ResolveInputSize(detectionModel, yoloInputSize, "YOLO");
+            _yoloWorker = new Worker(detectionModel, BackendType.GPUCompute);
+            _yoloInput = new Tensor<float>(new TensorShape(1, 3, yoloInputSize, yoloInputSize));
+            _yoloInputTexture = CreateInputTexture(yoloInputSize, "DroneFollow_YOLO_Input", RenderTextureFormat.ARGB32);
+        }
+
+        Shader inputShader = Shader.Find("DroneDetect/SentisModelInput");
+        if (inputShader == null)
+            Debug.LogError("[DroneFollowSentisPerception] SentisModelInput shader was not found.", this);
+        else
+            _inputTransform = new Material(inputShader);
+
+
+        if (rgbInput == null)
+            Debug.LogError("[DroneFollowSentisPerception] Assign the Main Camera RGB RenderTexture.", this);
+        else if (observationCamera == null || observationCamera.targetTexture != rgbInput)
+            Debug.LogError("[DroneFollowSentisPerception] The observation camera must render to the assigned RGB RenderTexture.", this);
+
+        if (GraphicsSettings.currentRenderPipeline == null)
+            Camera.onPostRender += OnCameraPostRender;
+        else
+            RenderPipelineManager.endCameraRendering += OnEndCameraRendering;
+    }
+
+    void OnDisable()
+    {
+        Camera.onPostRender -= OnCameraPostRender;
+        RenderPipelineManager.endCameraRendering -= OnEndCameraRendering;
+        _resetGeneration++;
+        _depthWorker?.Dispose();
+        _depthWorker = null;
+        _yoloWorker?.Dispose();
+        _yoloWorker = null;
+        if (_inputTransform != null)
+        {
+            Destroy(_inputTransform);
+            _inputTransform = null;
+        }
+        _depthInput?.Dispose();
+        _depthInput = null;
+        _yoloInput?.Dispose();
+        _yoloInput = null;
+        ReleaseInputTexture(ref _depthInputTexture);
+        ReleaseInputTexture(ref _yoloInputTexture);
+        if (_depthOutputTexture != null)
+        {
+            Destroy(_depthOutputTexture);
+            _depthOutputTexture = null;
+        }
+        if (_depthPreviewTexture != null)
+        {
+            Destroy(_depthPreviewTexture);
+            _depthPreviewTexture = null;
+        }
+        _depthPixels = null;
+        _depthPreviewPixels = null;
+        _depthSamples = null;
+        _hasDepthRange = false;
+        _depthPending = false;
+        _yoloPending = false;
+    }
+
+    void OnCameraPostRender(Camera renderedCamera)
+    {
+        if (renderedCamera == _camera)
+            ProcessCameraFrame();
+    }
+
+    void OnEndCameraRendering(ScriptableRenderContext context, Camera renderedCamera)
+    {
+        if (renderedCamera == _camera)
+            ProcessCameraFrame();
+    }
+
+    void ProcessCameraFrame()
+    {
+        if (rgbInput == null || _inputTransform == null)
+            return;
+
+        Rect crop = GetInputCrop(rgbInput);
+        if (_depthWorker != null && !_depthPending && Time.time >= _nextDepthInferenceTime)
+        {
+            _nextDepthInferenceTime = Time.time + 1f / Mathf.Max(1f, depthInferenceRateHz);
+            PrepareInput(rgbInput, _depthInputTexture, crop);
+            TextureConverter.ToTensor(_depthInputTexture, _depthInput, new TextureTransform());
+            _depthWorker.Schedule(_depthInput);
+            if (_depthWorker.PeekOutput() is not Tensor<float> output)
+                throw new System.InvalidOperationException("[DroneFollowSentisPerception] MiDaS must produce a float tensor.");
+
+            _depthPending = true;
+            int generation = _resetGeneration;
+            float frameAspect = rgbInput.width * crop.width / (rgbInput.height * crop.height);
+            var readback = output.ReadbackAndCloneAsync();
+            var awaiter = readback.GetAwaiter();
+            awaiter.OnCompleted(() =>
+            {
+                _depthPending = false;
+                using Tensor<float> readable = awaiter.GetResult();
+                CompleteDepthReadback(readable, generation, frameAspect);
+            });
+        }
+
+        if (_yoloWorker != null && !_yoloPending && Time.time >= _nextYoloInferenceTime)
+        {
+            _nextYoloInferenceTime = Time.time + 1f / Mathf.Max(1f, detectionInferenceRateHz);
+            PrepareInput(rgbInput, _yoloInputTexture, crop);
+            TextureConverter.ToTensor(_yoloInputTexture, _yoloInput, new TextureTransform());
+            _yoloWorker.Schedule(_yoloInput);
+            if (_yoloWorker.PeekOutput() is not Tensor<float> output)
+                throw new System.InvalidOperationException("[DroneFollowSentisPerception] YOLO must produce a float tensor.");
+
+            _yoloPending = true;
+            _yoloCaptureTime = Time.time;
+            int generation = _resetGeneration;
+            var readback = output.ReadbackAndCloneAsync();
+            var awaiter = readback.GetAwaiter();
+            awaiter.OnCompleted(() =>
+            {
+                _yoloPending = false;
+                using Tensor<float> readable = awaiter.GetResult();
+                CompleteDetectionReadback(readable, generation, crop);
+            });
+        }
+    }
+
+    void PrepareInput(RenderTexture source, RenderTexture target, Rect crop)
+    {
+        _inputTransform.SetVector("_CropScale", CropScale(crop));
+        _inputTransform.SetVector("_CropOffset", CropOffset(crop));
+        Graphics.Blit(source, target, _inputTransform);
+    }
+
+    void CompleteDepthReadback(Tensor<float> readable, int generation, float frameAspect)
+    {
+        if (this == null || generation != _resetGeneration)
+            return;
+
+        TensorShape shape = readable.shape;
+        if (shape.rank < 2 || shape[shape.rank - 1] <= 0 || shape[shape.rank - 2] <= 0)
+            throw new System.InvalidOperationException($"[DroneFollowSentisPerception] Invalid MiDaS output shape: {shape}.");
+
+        int width = shape[shape.rank - 1];
+        int height = shape[shape.rank - 2];
+        float[] values = readable.DownloadToArray();
+        if (values.Length != width * height)
+            throw new System.InvalidOperationException(
+                $"[DroneFollowSentisPerception] Expected one depth channel but received {values.Length} values for {width}x{height}.");
+
+        UpdateDepthRange(values);
+
+        // Tensor row 0 is the image top (TextureTransform default CoordOrigin.TopLeft); Texture2D row 0 is the bottom.
+        int targetWidth = DroneFollowContract.DepthObservationWidth;
+        int targetHeight = DroneFollowContract.DepthObservationHeight;
+        for (int y = 0; y < targetHeight; y++)
+        {
+            int sourceY0 = y * height / targetHeight;
+            int sourceY1 = Mathf.Max(sourceY0 + 1, (y + 1) * height / targetHeight);
+            for (int x = 0; x < targetWidth; x++)
+            {
+                int sourceX0 = x * width / targetWidth;
+                int sourceX1 = Mathf.Max(sourceX0 + 1, (x + 1) * width / targetWidth);
+                float sum = 0f;
+                int count = 0;
+                for (int sy = sourceY0; sy < sourceY1; sy++)
+                for (int sx = sourceX0; sx < sourceX1; sx++)
+                {
+                    float value = values[sy * width + sx];
+                    if (!IsFinite(value))
+                        continue;
+                    sum += value;
+                    count++;
+                }
+
+                byte gray = count == 0 ? (byte)0 : NormalizeDepth(sum / count);
+                _depthPixels[(targetHeight - 1 - y) * targetWidth + x] = new Color32(gray, gray, gray, 255);
+            }
+        }
+
+        if (depthPreview != null)
+            UpdateDepthPreview(values, width, height, frameAspect);
+
+        _depthOutputTexture.SetPixels32(_depthPixels);
+        _depthOutputTexture.Apply(false, false);
+        if (depthOutput != null)
+            Graphics.Blit(_depthOutputTexture, depthOutput);
+    }
+
+    void UpdateDepthRange(float[] values)
+    {
+        float low;
+        float high;
+        if (depthNormalization == DepthNormalization.Fixed)
+        {
+            low = minimumDepthValue;
+            high = maximumDepthValue;
+        }
+        else
+        {
+            const int maxSamples = 16384;
+            int stride = Mathf.Max(1, values.Length / maxSamples);
+            int sampleCount = 0;
+            if (_depthSamples == null || _depthSamples.Length < values.Length / stride + 1)
+                _depthSamples = new float[values.Length / stride + 1];
+            for (int i = 0; i < values.Length; i += stride)
+            {
+                if (IsFinite(values[i]))
+                    _depthSamples[sampleCount++] = values[i];
+            }
+
+            if (sampleCount == 0)
+                throw new System.InvalidOperationException("[DroneFollowSentisPerception] MiDaS produced no finite depth values.");
+
+            System.Array.Sort(_depthSamples, 0, sampleCount);
+            low = _depthSamples[Mathf.Clamp(Mathf.RoundToInt(lowDepthPercentile * (sampleCount - 1)), 0, sampleCount - 1)];
+            high = _depthSamples[Mathf.Clamp(Mathf.RoundToInt(highDepthPercentile * (sampleCount - 1)), 0, sampleCount - 1)];
+            if (high - low < 1e-3f)
+                high = low + 1e-3f;
+
+            if (_hasDepthRange)
+            {
+                low = Mathf.Lerp(_depthLow, low, depthRangeAdaptation);
+                high = Mathf.Lerp(_depthHigh, high, depthRangeAdaptation);
+            }
+        }
+
+        _depthLow = low;
+        _depthHigh = high;
+        _hasDepthRange = true;
+    }
+
+    byte NormalizeDepth(float depth)
+    {
+        float normalized = Mathf.InverseLerp(_depthLow, _depthHigh, depth);
+        if (invertDepth)
+            normalized = 1f - normalized;
+        return (byte)Mathf.RoundToInt(Mathf.Clamp01(normalized) * 255f);
+    }
+
+    void UpdateDepthPreview(float[] values, int width, int height, float frameAspect)
+    {
+        // The model sees a square input; restoring the camera aspect on screen undoes the stretch.
+        AspectRatioFitter fitter = depthPreview.GetComponent<AspectRatioFitter>();
+        if (fitter == null)
+            fitter = depthPreview.gameObject.AddComponent<AspectRatioFitter>();
+        fitter.aspectMode = AspectRatioFitter.AspectMode.FitInParent;
+        fitter.aspectRatio = frameAspect;
+
+        if (_depthPreviewTexture == null ||
+            _depthPreviewTexture.width != width ||
+            _depthPreviewTexture.height != height)
+        {
+            if (_depthPreviewTexture != null)
+                Destroy(_depthPreviewTexture);
+            _depthPreviewTexture = new Texture2D(width, height, TextureFormat.RGB24, false, true)
+            {
+                name = "DroneFollow_MiDaS_Preview",
+                filterMode = FilterMode.Bilinear,
+                wrapMode = TextureWrapMode.Clamp
+            };
+            _depthPreviewPixels = new Color32[width * height];
+            depthPreview.texture = _depthPreviewTexture;
+        }
+
+        for (int y = 0; y < height; y++)
+        {
+            int textureRow = (height - 1 - y) * width;
+            int sourceRow = y * width;
+            for (int x = 0; x < width; x++)
+            {
+                float value = values[sourceRow + x];
+                byte gray = IsFinite(value) ? NormalizeDepth(value) : (byte)0;
+                _depthPreviewPixels[textureRow + x] = new Color32(gray, gray, gray, 255);
+            }
+        }
+
+        _depthPreviewTexture.SetPixels32(_depthPreviewPixels);
+        _depthPreviewTexture.Apply(false, false);
+    }
+
+    void CompleteDetectionReadback(Tensor<float> readable, int generation, Rect crop)
+    {
+        if (this == null || generation != _resetGeneration)
+            return;
+
+        TensorShape shape = readable.shape;
+        if (shape.rank != 3 || shape[0] != 1)
+            throw new System.InvalidOperationException($"[DroneFollowSentisPerception] Expected a batch-one rank-three YOLO output, received {shape}.");
+
+        bool channelsFirst;
+        if (shape[1] <= 256 && shape[2] > shape[1])
+            channelsFirst = true;
+        else if (shape[2] <= 256 && shape[1] > shape[2])
+            channelsFirst = false;
+        else
+            throw new System.InvalidOperationException($"[DroneFollowSentisPerception] Could not identify the class and candidate axes in YOLO output {shape}.");
+
+        int channelCount = channelsFirst ? shape[1] : shape[2];
+        int candidateCount = channelsFirst ? shape[2] : shape[1];
+        if (channelCount < 5)
+            throw new System.InvalidOperationException($"[DroneFollowSentisPerception] YOLO output must have at least four box channels and one class channel, received {shape}.");
+
+        float[] values = readable.DownloadToArray();
+        if (values.Length != channelCount * candidateCount)
+            throw new System.InvalidOperationException("[DroneFollowSentisPerception] YOLO output data does not match its shape.");
+
+        const int personClassId = 0;
+        if (channelCount <= 4 + personClassId)
+            throw new System.InvalidOperationException("[DroneFollowSentisPerception] YOLO output does not contain the COCO person class.");
+
+        float GetValue(int channel, int candidate)
+        {
+            return channelsFirst
+                ? values[channel * candidateCount + candidate]
+                : values[candidate * channelCount + channel];
+        }
+
+        var candidates = new List<DetectionCandidate>();
+        float bestScore = 0f;
+        for (int candidate = 0; candidate < candidateCount; candidate++)
+        {
+            float score = GetValue(4 + personClassId, candidate);
+            if (score > bestScore)
+                bestScore = score;
+
+            if (float.IsNaN(score) || float.IsInfinity(score) || score < personScoreThreshold)
+                continue;
+
+            float centerX = GetValue(0, candidate) / yoloInputSize;
+            float centerY = GetValue(1, candidate) / yoloInputSize;
+            float width = GetValue(2, candidate) / yoloInputSize;
+            float height = GetValue(3, candidate) / yoloInputSize;
+            if (!IsFinite(centerX) || !IsFinite(centerY) ||
+                !IsFinite(width) || !IsFinite(height) || width <= 0f || height <= 0f)
+                continue;
+
+            float minX = Mathf.Clamp01(centerX - width * 0.5f);
+            float maxX = Mathf.Clamp01(centerX + width * 0.5f);
+            float minY = Mathf.Clamp01(centerY - height * 0.5f);
+            float maxY = Mathf.Clamp01(centerY + height * 0.5f);
+            if (maxX <= minX || maxY <= minY)
+                continue;
+
+            candidates.Add(new DetectionCandidate
+            {
+                CenterX = (minX + maxX) * 0.5f,
+                CenterY = (minY + maxY) * 0.5f,
+                Width = maxX - minX,
+                Height = maxY - minY,
+                Score = score
+            });
+        }
+
+        DetectionFramesProcessed++;
+        LastPersonScore = bestScore;
+        if (candidates.Count == 0)
+        {
+            _current = DroneTargetDetection.None(_yoloCaptureTime);
+            _currentViewportBox = Rect.zero;
+            _hasCurrentViewportBox = false;
+            return;
+        }
+
+        candidates.Sort((left, right) => right.Score.CompareTo(left.Score));
+        var kept = new List<DetectionCandidate>(MaxPersonBoxesAfterNms);
+        foreach (DetectionCandidate candidate in candidates)
+        {
+            bool overlapsKeptBox = false;
+            foreach (DetectionCandidate keptCandidate in kept)
+            {
+                if (CalculateIoU(candidate, keptCandidate) > PersonBoxIouThreshold)
+                {
+                    overlapsKeptBox = true;
+                    break;
+                }
+            }
+
+            if (overlapsKeptBox)
+                continue;
+
+            kept.Add(candidate);
+            if (kept.Count == MaxPersonBoxesAfterNms)
+                break;
+        }
+
+        DetectionCandidate best = kept[0];
+        _current = new DroneTargetDetection(
+            best.CenterX * 2f - 1f,
+            1f - best.CenterY * 2f,
+            best.Height,
+            true,
+            _yoloCaptureTime);
+
+        _currentViewportBox = new Rect(
+            crop.x + (best.CenterX - best.Width * 0.5f) * crop.width,
+            crop.y + (1f - best.CenterY - best.Height * 0.5f) * crop.height,
+            best.Width * crop.width,
+            best.Height * crop.height);
+        _hasCurrentViewportBox = true;
+    }
+
+    static float CalculateIoU(DetectionCandidate a, DetectionCandidate b)
+    {
+        float intersectionWidth = Mathf.Max(
+            0f,
+            Mathf.Min(a.CenterX + a.Width * 0.5f, b.CenterX + b.Width * 0.5f) -
+            Mathf.Max(a.CenterX - a.Width * 0.5f, b.CenterX - b.Width * 0.5f));
+        float intersectionHeight = Mathf.Max(
+            0f,
+            Mathf.Min(a.CenterY + a.Height * 0.5f, b.CenterY + b.Height * 0.5f) -
+            Mathf.Max(a.CenterY - a.Height * 0.5f, b.CenterY - b.Height * 0.5f));
+        float intersection = intersectionWidth * intersectionHeight;
+        float union = a.Width * a.Height + b.Width * b.Height - intersection;
+        return union > 0f ? intersection / union : 0f;
+    }
+
+    static bool IsFinite(float value)
+    {
+        return !float.IsNaN(value) && !float.IsInfinity(value);
+    }
+
+    public bool TryGetCurrentViewportBox(out Rect viewportBox)
+    {
+        if (Current.Visible && _hasCurrentViewportBox)
+        {
+            viewportBox = _currentViewportBox;
+            return true;
+        }
+
+        viewportBox = Rect.zero;
+        return false;
+    }
+
+    public void ResetDetection()
+    {
+        _resetGeneration++;
+        _current = DroneTargetDetection.None(Time.time);
+        _currentViewportBox = Rect.zero;
+        _hasCurrentViewportBox = false;
+    }
+
+    static RenderTexture CreateInputTexture(int size, string textureName, RenderTextureFormat format)
+    {
+        var texture = new RenderTexture(size, size, 0, format, RenderTextureReadWrite.Linear)
+        {
+            name = textureName,
+            filterMode = FilterMode.Bilinear,
+            wrapMode = TextureWrapMode.Clamp,
+            useMipMap = false
+        };
+        texture.Create();
+        return texture;
+    }
+
+    static int ResolveInputSize(Model model, int configuredSize, string modelName)
+    {
+        if (model.inputs.Count != 1)
+            throw new System.InvalidOperationException(
+                $"[DroneFollowSentisPerception] {modelName} model must have exactly one image input; found {model.inputs.Count}.");
+
+        DynamicTensorShape inputShape = model.inputs[0].shape;
+        if (inputShape.IsStatic())
+        {
+            TensorShape shape = inputShape.ToTensorShape();
+            if (shape.rank != 4 || shape[0] != 1 || shape[1] != 3 || shape[2] != shape[3])
+                throw new System.InvalidOperationException(
+                    $"[DroneFollowSentisPerception] {modelName} expects unsupported input shape {shape}; expected [1,3,size,size].");
+            return shape[2];
+        }
+
+        return Mathf.Max(32, configuredSize);
+    }
+
+    static void ReleaseInputTexture(ref RenderTexture texture)
+    {
+        if (texture == null)
+            return;
+
+        texture.Release();
+        Destroy(texture);
+        texture = null;
+    }
+
+    static Vector2 CropScale(Rect crop) => new Vector2(crop.width, crop.height);
+    static Vector2 CropOffset(Rect crop) => new Vector2(crop.x, crop.y);
+    Rect GetInputCrop(RenderTexture source)
+    {
+        if (inputFraming == InputFraming.FullFrameStretch)
+            return new Rect(0f, 0f, 1f, 1f);
+
+        float aspect = source.width / (float)source.height;
+        float width = aspect > 1f ? 1f / aspect : 1f;
+        float height = aspect < 1f ? aspect : 1f;
+        return new Rect((1f - width) * 0.5f, (1f - height) * 0.5f, width, height);
+    }
+
+}

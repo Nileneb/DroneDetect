@@ -10,6 +10,8 @@ using Unity.MLAgents.Sensors;
 /// </summary>
 public sealed class DroneFollowAgent : Agent
 {
+    public DroneFollowSentisPerception perception;
+
     [Header("Follow task")]
     public Transform followTarget;
     public float desiredAltitude = 1.5f;
@@ -18,6 +20,7 @@ public sealed class DroneFollowAgent : Agent
     [Min(0f)] public float altitudeRewardWeight = 0.12f;
     [Min(0f)] public float distanceRewardWeight = 0.25f;
     [Min(0f)] public float centeringRewardWeight = 0.15f;
+    [Min(0f)] public float centeredTargetReward = 0.03f;
     [Min(0f)] public float followHoldReward = 0.015f;
     [Min(0f)] public float lostDetectionPenalty = 0.005f;
     [Min(0f)] public float smoothActionPenalty = 0.0005f;
@@ -41,7 +44,7 @@ public sealed class DroneFollowAgent : Agent
 
     IDroneFollowController _controller;
     IDroneTargetDetectionSource _detector;
-    DroneDepthCamera _depthCamera;
+    DroneFollowSentisPerception _perception;
     Vector3 _spawnPosition;
     Quaternion _spawnRotation;
     Vector4 _previousAction;
@@ -59,6 +62,24 @@ public sealed class DroneFollowAgent : Agent
     int _episodeFlightDecisions;
     int _episodeDecisionLimit;
     int _curriculumStage;
+    bool _finalCurriculumStageCompleted;
+
+    public int CurrentCurriculumStage => _curriculumStage;
+    public int CurrentEpisodeFlightDecisions => _episodeFlightDecisions;
+    public int CurrentEpisodeDecisionLimit => _episodeDecisionLimit;
+    public bool FinalCurriculumStageCompleted => _finalCurriculumStageCompleted;
+    public float TargetCenteringQuality
+    {
+        get
+        {
+            DroneTargetDetection detection = _detector != null
+                ? _detector.Current
+                : DroneTargetDetection.None(Time.time);
+            return detection.Visible
+                ? Mathf.Clamp01(1f - (Mathf.Abs(detection.CenterX) + Mathf.Abs(detection.CenterY)) / 0.5f)
+                : 0f;
+        }
+    }
 
     public override void Initialize()
     {
@@ -66,10 +87,24 @@ public sealed class DroneFollowAgent : Agent
         _spawnPosition = transform.position;
         _spawnRotation = transform.rotation;
 
-        foreach (MonoBehaviour component in GetComponents<MonoBehaviour>())
+        foreach (MonoBehaviour component in GetComponentsInChildren<MonoBehaviour>(true))
         {
+            if (component == null)
+                continue;
+
             if (_controller == null) _controller = component as IDroneFollowController;
-            if (_detector == null) _detector = component as IDroneTargetDetectionSource;
+            if (_detector == null &&
+                component.isActiveAndEnabled &&
+                component is IDroneTargetDetectionSource detectionSource)
+                _detector = detectionSource;
+            if (_perception == null)
+                _perception = component as DroneFollowSentisPerception;
+        }
+
+        if (perception != null)
+        {
+            _perception = perception;
+            _detector = perception;
         }
 
         if (_controller == null)
@@ -80,7 +115,8 @@ public sealed class DroneFollowAgent : Agent
             Debug.LogError("[DroneFollowAgent] Follow target is not assigned.", this);
 
         RenderTextureSensorComponent depthSensor = GetComponent<RenderTextureSensorComponent>();
-        _depthCamera = GetComponentInChildren<DroneDepthCamera>(true);
+        if (_perception == null)
+            _perception = GetComponentInChildren<DroneFollowSentisPerception>(true);
         if (depthSensor == null ||
             depthSensor.RenderTexture == null ||
             depthSensor.RenderTexture.width != DroneFollowContract.DepthObservationWidth ||
@@ -91,12 +127,14 @@ public sealed class DroneFollowAgent : Agent
                 $"[DroneFollowAgent] Expected a {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight} RenderTextureSensorComponent on the Agent. Re-run DroneDetect > Configure Active Scene for DroneFollow.",
                 this);
         }
-        else if (_depthCamera == null || _depthCamera.outputTexture != depthSensor.RenderTexture)
+        else if (_perception == null || _perception.depthOutput != depthSensor.RenderTexture)
         {
             Debug.LogError(
-                "[DroneFollowAgent] The depth sensor is not connected to the Main Camera depth output. Re-run DroneDetect > Configure Active Scene for DroneFollow.",
+                "[DroneFollowAgent] The depth sensor is not connected to the Main Camera Sentis depth output. Re-run DroneDetect > Configure Active Scene for DroneFollow.",
                 this);
         }
+
+        DroneFollowHUD.CreateHUD(this);
     }
 
     public override void OnEpisodeBegin()
@@ -133,9 +171,6 @@ public sealed class DroneFollowAgent : Agent
             }
         }
 
-        var simulatedDetector = _detector as SimulatedBoundingBoxDetector;
-        if (simulatedDetector != null)
-            simulatedDetector.ApplyCurriculumDifficulty(_curriculumStage);
         _detector?.ResetDetection();
 
         var simulated = _controller as SimulatedDroneFollowControllerAdapter;
@@ -155,8 +190,6 @@ public sealed class DroneFollowAgent : Agent
 
     public override void CollectObservations(VectorSensor sensor)
     {
-        _depthCamera?.RequestObservationRender();
-
         NavdataPacket nav = _controller != null ? _controller.Navdata : null;
         Vector3 gyro = _controller != null ? _controller.BodyAngularVelocityRadSec : Vector3.zero;
 
@@ -281,6 +314,8 @@ public sealed class DroneFollowAgent : Agent
         if (_episodeFlightDecisions >= _episodeDecisionLimit)
         {
             _ending = true;
+            if (_curriculumStage == 4)
+                _finalCurriculumStageCompleted = true;
             AddReward(flightCompletionReward * Mathf.Lerp(1f, 0.5f, _damage));
             EndEpisode();
         }
@@ -323,6 +358,9 @@ public sealed class DroneFollowAgent : Agent
 
         if (detection.Visible)
         {
+            float centeredness = Mathf.Clamp01(1f - centerError / 0.5f);
+            AddReward(centeredTargetReward * centeredness);
+
             bool inDistanceBand = distanceError <= 0.25f;
             bool atAltitude = altitudeError <= 0.5f;
             if (inDistanceBand && atAltitude && centerError <= 0.5f)
@@ -422,7 +460,11 @@ public sealed class DroneFollowAgent : Agent
         _ending = true;
         float minimumFlightDecisions = _episodeDecisionLimit * safeLandingMinimumFlightFraction;
         if (_episodeFlightDecisions >= minimumFlightDecisions)
+        {
             AddReward(safeLandingReward);
+            if (_curriculumStage == 4 && _episodeFlightDecisions >= _episodeDecisionLimit)
+                _finalCurriculumStageCompleted = true;
+        }
         else
             AddReward(-flightCompletionReward);
         EndEpisode();

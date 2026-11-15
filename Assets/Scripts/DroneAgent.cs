@@ -104,10 +104,6 @@ public class DroneAgent : Agent
     [Header("Parcours Varianten")]
     public List<ParcourLayout> parcourLayouts = new List<ParcourLayout>();
 
-    [Header("Depth Camera")]
-    [Tooltip("Optionale DroneDepthCamera-Komponente (child GameObject).")]
-    public DroneDepthCamera depthCamera;
-
     [Header("Target-Jitter")]
     [Tooltip("Zufaelliger Positions-Offset pro Target bei jedem Episode-Reset.")]
     public Vector3 targetJitterBounds = new Vector3(1.5f, 0.5f, 1.5f);
@@ -498,7 +494,6 @@ public class DroneAgent : Agent
         if (_drone == null || _isEpisodeEnding) return;
 
         _stepsInEpisode++;
-        depthCamera?.NotifyStep();
         if (episodeStepLimit > 0 && _stepsInEpisode >= episodeStepLimit)
         {
             AddReward(timeoutPenalty);

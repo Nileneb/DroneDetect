@@ -7,7 +7,7 @@ using UnityEngine.UI;
 /// </summary>
 public sealed class DroneFollowBoundingBoxOverlay : MaskableGraphic
 {
-  public SimulatedBoundingBoxDetector detector;
+  public MonoBehaviour detector;
   public float lineThickness = 2f;
 
   Rect _viewportBox;
@@ -22,7 +22,8 @@ public sealed class DroneFollowBoundingBoxOverlay : MaskableGraphic
   void LateUpdate()
   {
   Rect nextBox = Rect.zero;
-  bool visible = detector != null && detector.TryGetCurrentViewportBox(out nextBox);
+  IDroneDetectionViewportSource source = detector as IDroneDetectionViewportSource;
+  bool visible = source != null && source.TryGetCurrentViewportBox(out nextBox);
   if (visible == _visible && (!visible || Approximately(_viewportBox, nextBox)))
   return;
 

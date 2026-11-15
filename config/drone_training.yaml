@@ -82,4 +82,4 @@ env_settings:
   base_port: 5004
 
 engine_settings:
-  time_scale: 1
+  time_scale: 1.2

@@ -37,7 +37,6 @@ public static class DroneFollowCameraRouting
             return;
         }
         Undo.RecordObject(mainCamera, "Route Main Camera to primary display");
-        mainCamera.targetTexture = null;
         mainCamera.targetDisplay = 0;
         mainCamera.rect = new Rect(0f, 0f, 1f, 1f);
         mainCamera.enabled = true;
@@ -56,16 +55,17 @@ public static class DroneFollowCameraRouting
             camera.enabled = false;
             EditorUtility.SetDirty(camera);
         }
-        SimulatedBoundingBoxDetector detector = drone.GetComponent<SimulatedBoundingBoxDetector>();
-        if (detector != null)
+        DroneFollowSentisPerception perception =
+            drone.GetComponentInChildren<DroneFollowSentisPerception>(true);
+        if (perception != null)
         {
-            Undo.RecordObject(detector, "Use Main Camera for target detection");
-            detector.observationCamera = mainCamera;
-            EditorUtility.SetDirty(detector);
+            Undo.RecordObject(perception, "Use Main Camera for model input");
+            perception.observationCamera = mainCamera;
+            EditorUtility.SetDirty(perception);
         }
         else
         {
-            Debug.LogError("[DroneFollowCameraRouting] SimulatedBoundingBoxDetector is missing.");
+            Debug.LogError("[DroneFollowCameraRouting] DroneFollowSentisPerception is missing.");
         }
         BehaviorParameters behavior = drone.GetComponent<BehaviorParameters>();
         if (behavior != null)
@@ -77,7 +77,7 @@ public static class DroneFollowCameraRouting
         int removedSensors = RemoveCameraSensors(scene);
         EditorSceneManager.MarkSceneDirty(scene);
         EditorSceneManager.SaveOpenScenes();
-        Debug.Log("[DroneFollowCameraRouting] Saved roles: Main Camera -> primary RGB display, target detection, centered depth preview and policy observation; downward GroundCam -> PiP_Ground; no separate depth camera. Ground preview=" + groundPreviewReady + ", removed CameraSensorComponent(s)=" + removedSensors + ".");
+        Debug.Log("[DroneFollowCameraRouting] Saved roles: Main Camera -> MainCameraRGB RenderTexture, full-screen display, and Sentis model input; downward GroundCam -> PiP_Ground; Main Camera Sentis output -> PiP_Depth and policy observation. Ground preview=" + groundPreviewReady + ", removed CameraSensorComponent(s)=" + removedSensors + ".");
     }
     static bool RoutePreview(Scene scene, Camera camera, string previewName, bool required)
     {

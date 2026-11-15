@@ -4,26 +4,70 @@
 
 `config/DroneFollow.yaml` advances the `follow_stage` environment parameter
 when the smoothed mean reward passes each threshold, after at least 50 episodes.
-The Unity agent applies the same stage to target motion, detector noise/latency,
-and the maximum controlled-flight duration:
+The Unity agent applies the same stage to target motion and the maximum
+controlled-flight duration:
 
-| Stage | Flight duration | Target/detector |
+| Stage | Flight duration | Target motion |
 |---|---:|---|
 | 0 | 60 s | Target roams within a 5 m radius |
-| 1 | 90 s | Wider target movement and low detector noise |
-| 2 | 120 s | Moderate target motion and detector noise |
+| 1 | 90 s | Wider target movement with model-based person detection |
+| 2 | 120 s | Moderate target motion with model-based person detection |
 | 3 | 180 s | Full configured target motion/noise |
 | 4 | 240 s | Full difficulty and longest flights |
 
 Rewards are based on improvement in distance-band, image-centering, and altitude
-errors rather than repeatedly charging the full absolute error. A small reward
-is paid only while the target is detected, centered, at the desired distance,
-and near the target altitude while the agent is airborne. Completing the stage
-duration gives a separate completion reward. A controlled landing receives its
-own reward only after the full stage flight duration. Earlier land actions are
-rejected and penalized, so the agent cannot end an episode early to avoid the
-follow task. At the duration limit, the
-training episode resets directly to takeoff rather than waiting on the ground.
+errors rather than repeatedly charging the full absolute error. In addition,
+the detected box earns up to `centeredTargetReward` when its center overlaps the
+Main Camera crosshair, with the maximum at exact alignment. A smaller hold
+reward is paid only while the target is detected, centered, at the desired
+distance, and near the target altitude while the agent is airborne. Completing
+the stage duration gives a separate completion reward. A controlled landing
+receives its own reward only after the full stage flight duration. Earlier land
+actions are rejected and penalized, so the agent cannot end an episode early to
+avoid the follow task. At the duration limit, the training episode resets
+directly to takeoff rather than waiting on the ground.
+
+## Sentis depth and object detection
+
+The scene setup attaches one `DroneFollowSentisPerception` to `Main Camera` and
+selects MiDaS small by default, with the large model available as an inspector
+alternative. Its source is the actual camera render (`OnRenderImage`), not the
+preview `RawImage`; it passes the camera frame unchanged to the Game view,
+stretches the full 16:9 frame into each model's square input (`inputFraming`;
+`CenterCrop` drops the outer ~44% of the frame), and writes MiDaS output
+(box-averaged) to the 84x84 grayscale RenderTexture used by the policy; the
+`PiP_Depth` preview shows the same normalization at full model resolution
+(256 small / 384 large), re-aspected to the camera frame. YOLOv8n
+runs on the same framing at up to 10 Hz and supplies the highest-confidence
+COCO `person` box to the existing four-value detector contract. There is no
+simulated detection or Unity depth-buffer fallback: setup reports missing model
+assets as errors instead of quietly training with different observations.
+
+The model assets are expected at `Assets/Models/model-small.onnx`,
+`Assets/Models/model-f6b98070.onnx`, and `Assets/Models/yolov8n.onnx`.
+`DroneFollowSentisPerception` exposes inference rate, MiDaS output
+range/inversion/normalization, and person confidence threshold for tuning. Model inference
+and the ML-Agents RenderTexture observation transfer are separate costs; take
+a fresh Unity profiler/timer capture before comparing training throughput.
+
+MiDaS outputs scale-ambiguous relative inverse depth (Agent1: small ~60..1200,
+large ~0..6000), so the default `PerFramePercentile` normalization maps the 2nd..98th
+percentile of each frame to 0..1, smoothed over frames by `depthRangeAdaptation`.
+The old fixed 0..4096 range left the small model almost uniformly white.
+Models trained before this change saw different (and vertically flipped) depth
+observations and need retraining.
+
+The YOLO ONNX metadata identifies that model as AGPL-3.0. It is being used here
+for local experiments; check the model's applicable license obligations before
+redistributing the project or offering it as a network service. This is a
+model-license notice, not legal advice.
+
+The Play HUD overlays a center crosshair and a curriculum checklist. Lessons
+below the current `follow_stage` are marked complete, the active lesson shows
+its flight-time progress, and future lessons remain pending. The final long
+flight is checked off after its duration is survived. GroundCam and depth
+preview UI are scaled down for display; their render textures and the
+84x84 policy observation are unchanged.
 
 Impact costs increase with impact severity and accumulated damage. Damage also
 reduces control authority; reaching terminal damage or entering Emergency ends

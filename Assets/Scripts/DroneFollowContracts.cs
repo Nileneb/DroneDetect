@@ -61,9 +61,15 @@ public struct DroneTargetDetection
     }
 }
 
-/// <summary>Common interface for simulated and hardware target detectors.</summary>
+/// <summary>Common interface for model-backed and hardware target detectors.</summary>
 public interface IDroneTargetDetectionSource
 {
     DroneTargetDetection Current { get; }
     void ResetDetection();
+}
+
+/// <summary>Optional viewport-space box used only by the debug overlay.</summary>
+public interface IDroneDetectionViewportSource
+{
+    bool TryGetCurrentViewportBox(out Rect viewportBox);
 }
