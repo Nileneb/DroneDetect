@@ -30,6 +30,11 @@ public static class DroneFollowGroundStationSetup
     /// <summary>Builds and saves the scene; returns false (after logging why) if an asset is missing.</summary>
     public static bool CreateScene()
     {
+        // WHY(load-after-NewScene): NewScene(Single) unloads the previous scene's objects and the assets loaded
+        // before it come back destroyed (MissingReferenceException on policy.name, broken serialized references).
+        // Load the assets only once the new scene exists.
+        Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
+
         var policy = AssetDatabase.LoadAssetAtPath<ModelAsset>(PolicyModelPath);
         var midasSmall = AssetDatabase.LoadAssetAtPath<ModelAsset>(MidasSmallModelPath);
         var midasLarge = AssetDatabase.LoadAssetAtPath<ModelAsset>(MidasLargeModelPath);
@@ -47,8 +52,6 @@ public static class DroneFollowGroundStationSetup
             Debug.LogError("[GroundStationSetup] MiDaS/YOLO/OSNet models or the RGB/depth RenderTextures are missing; see README 'Models'.");
             return false;
         }
-
-        Scene scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);
 
         var cameraObject = new GameObject("UI Camera");
         var camera = cameraObject.AddComponent<Camera>();
