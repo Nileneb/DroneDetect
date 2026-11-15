@@ -1,5 +1,11 @@
 # DroneFollow training quickstart
 
+## One-time setup per clone
+
+```bash
+git config core.hooksPath tools/git-hooks   # auto-push after every commit
+```
+
 ## One-time scene setup
 
 1. Pull `main`, open `Assets/Scenes/Agent1.unity` and let Unity finish importing.

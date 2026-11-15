@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Auto-push every commit on a branch that tracks a remote. Enable once per clone:
+#   git config core.hooksPath tools/git-hooks
+branch="$(git symbolic-ref --short -q HEAD)" || exit 0
+git rev-parse --abbrev-ref --symbolic-full-name '@{u}' >/dev/null 2>&1 || exit 0
+log="$(git rev-parse --git-common-dir)/autopush.log"
+# Runs detached so a slow network never blocks the commit; failures land in the log.
+( git push --quiet --follow-tags >>"$log" 2>&1 || echo "$(date -Is) push of $branch failed" >>"$log" ) &
