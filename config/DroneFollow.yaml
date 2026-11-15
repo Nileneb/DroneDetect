@@ -46,9 +46,9 @@ behaviors:
 
 environment_parameters:
   # Path difficulty: an episode picks a loop whose DroneFollowPath.difficulty <= follow_stage.
-  # WHY(reward scale): thresholds are mean episode returns. A clean ~3 min loop earns roughly
-  # 2000 decisions x ~0.04 shaping + ~15 gates x 0.5 + 0.75 completion = ~85; losing the person
-  # half the time lands near ~35. Re-check against TensorBoard after the first run.
+  # WHY(reward scale): thresholds are mean episode returns. Shaping is paid every 50 Hz physics step, so a
+  # clean ~3 min loop earns roughly 9000 steps x ~0.03 + ~13 gates x 0.5 + 0.75 = ~280; losing the person
+  # half the time lands near ~110. Thresholds sit near half of a clean run; re-check in TensorBoard.
   follow_stage:
     curriculum:
       - name: FlatPathSlowTarget
@@ -57,7 +57,7 @@ environment_parameters:
           behavior: DroneFollow
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 40.0
+          threshold: 130.0
         value: 0
       - name: GentleHills
         completion_criteria:
@@ -65,7 +65,7 @@ environment_parameters:
           behavior: DroneFollow
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 45.0
+          threshold: 140.0
         value: 1
       - name: HillsTightTurns
         completion_criteria:
@@ -73,7 +73,7 @@ environment_parameters:
           behavior: DroneFollow
           signal_smoothing: true
           min_lesson_length: 100
-          threshold: 50.0
+          threshold: 150.0
         value: 2
       - name: FullCourseFasterTarget
         value: 3

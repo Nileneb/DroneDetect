@@ -18,7 +18,7 @@ public static class DroneFollowDemoTools
     const string RecorderDirectoryKey = "DroneFollowDemo.RecorderDirectory";
     const string RecordingNameKey = "DroneFollowDemo.RecordingName";
     const string ExpertKey = "DroneFollowDemo.ScriptedExpert";
-    const int ExpertDemoSteps = 30000;
+    const int ExpertDemoSteps = 5000;
     // Same pacing as config/DroneFollow.yaml (time_scale 4, ML-Agents' 60 captured frames per second),
     // so perception runs at the identical rate per simulated second as during training.
     const float ExpertTimeScale = 4f;
@@ -264,6 +264,6 @@ public static class DroneFollowDemoTools
             Debug.LogWarning($"[DroneFollowDemo] Published the training demo, but temporary-file cleanup was denied: {exception.Message}");
         }
 
-        Debug.Log($"[DroneFollowDemo] Published the manual recording to '{publishedPath}'. Both BC and GAIL training configs use this path.");
+        Debug.Log($"[DroneFollowDemo] Published the scripted-expert recording to '{publishedPath}'.");
     }
 }

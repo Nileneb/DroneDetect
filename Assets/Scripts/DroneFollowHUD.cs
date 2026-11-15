@@ -78,7 +78,7 @@ public sealed class DroneFollowHUD : MonoBehaviour
 
         int currentStage = Mathf.Clamp(_agent.CurrentCurriculumStage, 0, StageNames.Length - 1);
         int elapsedSeconds = Mathf.FloorToInt(
-            _agent.CurrentEpisodeFlightDecisions / DroneFollowContract.DecisionRateHz);
+            _agent.CurrentEpisodeFlightSeconds);
 
         bool finalChallengeCompleted = _agent.FinalCurriculumStageCompleted;
         _stageText.text = finalChallengeCompleted

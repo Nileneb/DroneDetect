@@ -38,15 +38,15 @@ completion reward.
 | 2 | + hills and tighter turns | up to ~1.1 m/s |
 | 3 | all four loops | up to 1.2 m/s |
 
-`config/DroneFollow.yaml` advances the stage when the smoothed mean episode return passes 40 / 45 / 50
+`config/DroneFollow.yaml` advances the stage when the smoothed mean episode return passes 130 / 140 / 150
 after at least 100 episodes. These thresholds are estimates (see the comment there); check them in
 TensorBoard after the first run.
 
 Rewards:
 
 - **Gates (largest single reward, `gateReward` 0.5):** the next gate in walking order pays fully when
-  the drone flies through it with the person detected now and in at least half of the last 10
-  decisions, at 2–3 m distance; 40 % if visible but outside that distance; nothing if the person was
+  the drone flies through it with the person detected now and during at least half of the last
+  second, at 2–3 m distance; 40 % if visible but outside that distance; nothing if the person was
   lost. A gate only counts after the target has walked past it (the drone trails), skipped gates
   earn nothing, earlier gates are ignored.
 - **Dense shaping:** improvement of distance-band, image-centering and altitude errors, a centered
@@ -139,8 +139,10 @@ be in that folder.
 
 ## Recording demonstrations with the scripted expert
 
-**DroneDetect > DroneFollow > Record Scripted Expert Demonstration** still flies the ground-truth PD
-follower through random stages at training speed and publishes `results/demonstrations/DroneFollowDemo.demo`.
+**DroneDetect > DroneFollow > Record Scripted Expert Demonstration** flies the ground-truth PD follower
+at training speed (`time_scale` 4) and walks the paths in turn (difficulty 0, 1, 2, 3, ...). It records
+5 000 decisions (~500 simulated seconds, about two and a half loops), then stops recording; **stop Play
+mode** to publish `results/demonstrations/DroneFollowDemo.demo`.
 The training config currently uses it; switch `demo_path` to `results/demonstrations/manual` once manual flights exist.
 
 After recording, start a new trainer run to load the updated demo; a trainer
