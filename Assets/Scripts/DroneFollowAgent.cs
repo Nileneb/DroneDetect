@@ -15,6 +15,8 @@ public sealed class DroneFollowAgent : Agent
     public DroneFollowSentisPerception perception;
     [Tooltip("Real-drone operation: no episode limit, no rewards, takeoff/landing stay with the operator.")]
     public bool deploymentMode;
+    [Tooltip("Demo recording only: Heuristic() flies a ground-truth follow controller instead of reading the keyboard.")]
+    public bool useScriptedExpert;
 
     [Header("Follow task")]
     public Transform followTarget;
@@ -67,6 +69,7 @@ public sealed class DroneFollowAgent : Agent
     float _previousAltitudeError;
     int _episodeFlightDecisions;
     int _episodeDecisionLimit;
+    float _expertPreviousDistance = -1f;
     int _curriculumStage;
     bool _finalCurriculumStageCompleted;
     bool _hasAttitudeSample;
@@ -167,9 +170,13 @@ public sealed class DroneFollowAgent : Agent
         if (deploymentMode)
             return;
 
-        _curriculumStage = Mathf.Clamp(
-            Mathf.RoundToInt(Academy.Instance.EnvironmentParameters.GetWithDefault("follow_stage", 0f)),
-            0, 4);
+        // Expert demos cover every curriculum stage so behavioral cloning sees fast targets too.
+        _curriculumStage = useScriptedExpert
+            ? Random.Range(0, 5)
+            : Mathf.Clamp(
+                Mathf.RoundToInt(Academy.Instance.EnvironmentParameters.GetWithDefault("follow_stage", 0f)),
+                0, 4);
+        _expertPreviousDistance = -1f;
         float[] flightDurationsSeconds = { 60f, 90f, 120f, 180f, 240f };
         _episodeDecisionLimit = Mathf.RoundToInt(
             flightDurationsSeconds[_curriculumStage] * DroneFollowContract.DecisionRateHz);
@@ -468,6 +475,13 @@ public sealed class DroneFollowAgent : Agent
         if (ca.Length != DroneFollowContract.ActionSize || _controller == null)
             return;
 
+        if (useScriptedExpert)
+        {
+            da[0] = 0;
+            WriteExpertAction(ca);
+            return;
+        }
+
         ca[0] = Input.GetAxisRaw("Vertical");
         ca[1] = -Input.GetAxisRaw("Horizontal");
         ca[2] = Input.GetKey(KeyCode.Space)
@@ -476,6 +490,33 @@ public sealed class DroneFollowAgent : Agent
         ca[3] = Input.GetKey(KeyCode.Q)
             ? -1f
             : Input.GetKey(KeyCode.E) ? 1f : 0f;
+    }
+
+    // Ground-truth PD follower used only to record demonstrations; the trained policy never sees ground truth.
+    void WriteExpertAction(ActionSegment<float> ca)
+    {
+        NavdataPacket nav = _controller.Navdata;
+        if (followTarget == null || nav == null)
+            return;
+
+        Vector3 toTarget = followTarget.position - transform.position;
+        Vector3 flatForward = Vector3.ProjectOnPlane(transform.forward, Vector3.up).normalized;
+        Vector3 flatToTarget = Vector3.ProjectOnPlane(toTarget, Vector3.up);
+        float distance = flatToTarget.magnitude;
+        float bearingDeg = Vector3.SignedAngle(flatForward, flatToTarget, Vector3.up);
+
+        float desiredDistance = 0.5f * (desiredDistanceMin + desiredDistanceMax);
+        float rangeRate = _expertPreviousDistance >= 0f
+            ? (distance - _expertPreviousDistance) * DroneFollowContract.DecisionRateHz
+            : 0f;
+        _expertPreviousDistance = distance;
+
+        // Only close distance once the target is roughly ahead; otherwise turn first.
+        float alignment = Mathf.Clamp01(1f - Mathf.Abs(bearingDeg) / 60f);
+        ca[0] = Mathf.Clamp((0.45f * (distance - desiredDistance) + 0.35f * rangeRate) * alignment, -1f, 1f);
+        ca[1] = Mathf.Clamp(0.3f * nav.vy, -1f, 1f);
+        ca[2] = Mathf.Clamp(1.5f * (desiredAltitude - nav.altitude), -1f, 1f);
+        ca[3] = Mathf.Clamp(bearingDeg / 25f, -1f, 1f);
     }
 
     void OnCollisionEnter(Collision collision)

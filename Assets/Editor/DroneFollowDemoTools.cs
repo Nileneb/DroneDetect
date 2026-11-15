@@ -17,6 +17,12 @@ public static class DroneFollowDemoTools
     const string RecorderNameKey = "DroneFollowDemo.RecorderName";
     const string RecorderDirectoryKey = "DroneFollowDemo.RecorderDirectory";
     const string RecordingNameKey = "DroneFollowDemo.RecordingName";
+    const string ExpertKey = "DroneFollowDemo.ScriptedExpert";
+    const int ExpertDemoSteps = 30000;
+    // Same pacing as config/DroneFollow.yaml (time_scale 4, ML-Agents' 60 captured frames per second),
+    // so perception runs at the identical rate per simulated second as during training.
+    const float ExpertTimeScale = 4f;
+    const int ExpertCaptureFramerate = 60;
     const string DemoName = "DroneFollowDemo";
     static readonly string DemoDirectory = Path.GetFullPath(
         Path.Combine(Application.dataPath, "..", "results", "demonstrations"));
@@ -27,7 +33,12 @@ public static class DroneFollowDemoTools
     }
 
     [MenuItem("DroneDetect/DroneFollow/Record Manual Demonstration")]
-    static void RecordManualDemonstration()
+    static void RecordManualDemonstration() => StartRecording(false);
+
+    [MenuItem("DroneDetect/DroneFollow/Record Scripted Expert Demonstration")]
+    static void RecordExpertDemonstration() => StartRecording(true);
+
+    static void StartRecording(bool scriptedExpert)
     {
         if (EditorApplication.isPlaying)
         {
@@ -78,6 +89,7 @@ public static class DroneFollowDemoTools
         recorder.DemonstrationName = recordingName;
         recorder.DemonstrationDirectory = DemoDirectory;
 
+        SessionState.SetBool(ExpertKey, scriptedExpert);
         SessionState.SetBool(PendingKey, true);
         Debug.Log($"[DroneFollowDemo] Starting manual recording in HeuristicOnly mode. Fly with WASD/arrows, Space/Left Shift, and Q/E; press G to land. Stop Play mode to publish the recording as '{DemoName}.demo' in '{DemoDirectory}'.");
         EditorApplication.isPlaying = true;
@@ -125,13 +137,24 @@ public static class DroneFollowDemoTools
             return;
         }
 
+        bool scriptedExpert = SessionState.GetBool(ExpertKey, false);
         behavior.BehaviorType = BehaviorType.HeuristicOnly;
         recorder.enabled = true;
         recorder.Record = true;
-        recorder.NumStepsToRecord = 0;
+        recorder.NumStepsToRecord = scriptedExpert ? ExpertDemoSteps : 0;
         recorder.DemonstrationName = SessionState.GetString(RecordingNameKey, string.Empty);
         recorder.DemonstrationDirectory = DemoDirectory;
-        Debug.Log("[DroneFollowDemo] Manual control is active. Recording continues until Play mode is stopped.");
+        if (scriptedExpert)
+        {
+            agent.useScriptedExpert = true;
+            Time.timeScale = ExpertTimeScale;
+            Time.captureFramerate = ExpertCaptureFramerate;
+            Debug.Log($"[DroneFollowDemo] Scripted expert is flying; {ExpertDemoSteps} steps are recorded, then stop Play mode to publish.");
+        }
+        else
+        {
+            Debug.Log("[DroneFollowDemo] Manual control is active. Recording continues until Play mode is stopped.");
+        }
     }
 
     static void RestoreSceneSettings()
