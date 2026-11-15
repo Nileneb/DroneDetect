@@ -100,9 +100,12 @@ sha256sum -c <<'EOF'
 EOF
 ```
 
-The Meshy-generated scenery GLBs (`Assets/Environment/TreesGLB/*.glb`,
-`Assets/Environment/RocksGLB/*.glb`, 26–162 MB each) are not in git either;
-copy them from an existing checkout (their `.meta` files are committed).
+The Meshy-generated scenery (`Assets/Environment/`) came with 0.5–3 million
+triangles per object, which made rendering – not learning – the training
+bottleneck. It is committed decimated to ~30k triangles each
+(`tools/scenery/`: Blender collapse-decimation, then only the geometry is
+spliced back into the original GLB so materials, textures and Unity's prefab
+references stay untouched).
 
 ## Getting started
 

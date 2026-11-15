@@ -109,9 +109,6 @@ results/
 /Assets/Models/model-small.onnx
 /Assets/Models/yolov8n.onnx
 
-# Meshy GLB scenery is 26-162 MB per file (GitHub limit 100 MB); kept local only, .meta files stay committed
-/Assets/Environment/TreesGLB/*.glb
-/Assets/Environment/RocksGLB/*.glb
 
 # Roslyn DLLs installed locally by the MCP for Unity package (script validation only)
 /Assets/Plugins/Roslyn/
