@@ -600,15 +600,17 @@ public sealed class DroneFollowAgent : Agent
             return;
         }
 
-        ca[0] = Input.GetAxisRaw("Vertical");
-        ca[1] = -Input.GetAxisRaw("Horizontal");
-        ca[2] = Input.GetKey(KeyCode.Space)
-            ? 1f
-            : Input.GetKey(KeyCode.LeftShift) ? -1f : 0f;
-        ca[3] = Input.GetKey(KeyCode.Q)
-            ? -1f
-            : Input.GetKey(KeyCode.E) ? 1f : 0f;
+        // WHY(project settings): the editor runs with Input System-only handling, where UnityEngine.Input throws.
+        Keyboard keys = Keyboard.current;
+        if (keys == null)
+            return;
+        ca[0] = Axis(keys.wKey.isPressed || keys.upArrowKey.isPressed, keys.sKey.isPressed || keys.downArrowKey.isPressed);
+        ca[1] = Axis(keys.aKey.isPressed || keys.leftArrowKey.isPressed, keys.dKey.isPressed || keys.rightArrowKey.isPressed);
+        ca[2] = Axis(keys.spaceKey.isPressed, keys.leftShiftKey.isPressed);
+        ca[3] = Axis(keys.eKey.isPressed, keys.qKey.isPressed);
     }
+
+    static float Axis(bool positive, bool negative) => (positive ? 1f : 0f) - (negative ? 1f : 0f);
 
     static Vector2 Deadzone(Vector2 stick)
     {
