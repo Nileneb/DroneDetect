@@ -49,8 +49,8 @@ EOF
 
 ### Scenery assets
 
-The Meshy-generated GLB trees and rocks (`Assets/Resources/TreesGLB/*.glb`,
-`Assets/Resources/RocksGLB/*.glb`, 26–162 MB each) are also **not in git** –
+The Meshy-generated GLB trees and rocks (`Assets/Environment/TreesGLB/*.glb`,
+`Assets/Environment/RocksGLB/*.glb`, 26–162 MB each) are also **not in git** –
 GitHub rejects files over 100 MB. Copy them from an existing checkout into the
 same folders; their `.meta` files are committed.
 
