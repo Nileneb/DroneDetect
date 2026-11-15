@@ -33,6 +33,10 @@ public sealed class DroneFollowAgent : Agent
     [Min(0f)] public float followHoldReward = 0.015f;
     [Min(0f)] public float lostDetectionPenalty = 0.005f;
     [Min(0f)] public float smoothActionPenalty = 0.0005f;
+    [Tooltip("Episode ends early once the drone is farther than this from the target while flying. Random wandering far from the target teaches nothing; a fresh episode starts near it.")]
+    [Min(1f)] public float abortDistance = 8f;
+    [Tooltip("One-off penalty when an episode is aborted for distance.")]
+    [Min(0f)] public float abortDistancePenalty = 1f;
     [Tooltip("Paid on touchdown after the target walked its whole loop, scaled by the share of gates passed well.")]
     [Min(0f)] public float flightCompletionReward = 0.75f;
     [Tooltip("Training resets yaw the drone randomly by up to this angle so the target does not always start centered.")]
@@ -44,6 +48,8 @@ public sealed class DroneFollowAgent : Agent
     [Tooltip("Largest single reward: passing the next gate with the person in view at follow distance.")]
     [Min(0f)] public float gateReward = 0.5f;
     public Vector2 walkSpeedRange = new Vector2(0.6f, 1.2f);
+    [Tooltip("Target walk speed on curriculum stage 0 (flat path). Slower so the first lesson is learnable.")]
+    public Vector2 firstStageWalkSpeedRange = new Vector2(0.3f, 0.5f);
     [Tooltip("Seconds the drone keeps following the standing target before the sim lands it.")]
     [Min(0f)] public float hoverAfterTargetStopsSeconds = 3f;
 
@@ -234,7 +240,9 @@ public sealed class DroneFollowAgent : Agent
         bool reverse = Random.value < 0.5f;
         float stageProgress = _curriculumStage / (float)(DroneFollowContract.CurriculumStages - 1);
         float maxSpeed = Mathf.Lerp(Mathf.Lerp(walkSpeedRange.x, walkSpeedRange.y, 0.5f), walkSpeedRange.y, stageProgress);
-        float speed = Random.Range(walkSpeedRange.x, maxSpeed);
+        float speed = _curriculumStage == 0
+            ? Random.Range(firstStageWalkSpeedRange.x, firstStageWalkSpeedRange.y)
+            : Random.Range(walkSpeedRange.x, maxSpeed);
         foreach (DroneFollowPath path in paths)
             if (path != null)
                 path.SetGatesActive(path == _activePath);
@@ -424,6 +432,17 @@ public sealed class DroneFollowAgent : Agent
         AddFollowRewards(previousAction, _previousAction);
         if (_ending)
             return;
+
+        if (!deploymentMode && followTarget != null &&
+            (_controller.State == DroneState.Hovering || _controller.State == DroneState.Flying) &&
+            Vector3.Distance(transform.position, followTarget.position) > abortDistance)
+        {
+            Debug.Log($"[DroneFollowAgent] Abbruch: Abstand > {abortDistance:F1} m, Episode endet früh.", this);
+            _ending = true;
+            AddReward(-abortDistancePenalty);
+            EndEpisode();
+            return;
+        }
 
         if (_walker != null && _walker.Finished)
         {

@@ -21584,14 +21584,6 @@ MonoBehaviour:
   m_Script: {fileID: 1253719953}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SimulatedMovingTarget
-  roamRadius: 12
-  minSpeed: 0.75
-  maxSpeed: 2
-  stopProbability: 0.05
-  minStopSeconds: 0.2
-  maxStopSeconds: 0.8
-  minScaleMultiplier: 0.8
-  maxScaleMultiplier: 1.2
 --- !u!114 &1929337943
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -24531,9 +24523,21 @@ PrefabInstance:
       value: Assets/Demonstrations
       objectReference: {fileID: 0}
     - target: {fileID: 8249013350055823601, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
+      propertyPath: yoloModel
+      value: 
+      objectReference: {fileID: 5022602860645237092, guid: 14c681a22cb33b3479b39ac03f5b0ceb, type: 3}
+    - target: {fileID: 8249013350055823601, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
       propertyPath: depthPreview
       value: 
       objectReference: {fileID: 2067925196}
+    - target: {fileID: 8249013350055823601, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
+      propertyPath: midasLargeModel
+      value: 
+      objectReference: {fileID: 5022602860645237092, guid: 77f517bf9b7a5aacab9f4591a2b8a687, type: 3}
+    - target: {fileID: 8249013350055823601, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
+      propertyPath: midasSmallModel
+      value: 
+      objectReference: {fileID: 5022602860645237092, guid: 58095e950d30b8aec8c073e4e71620df, type: 3}
     - target: {fileID: 8249013350055823601, guid: 979fc5f838d46744aa26f426a3934492, type: 3}
       propertyPath: randomizeDetections
       value: 1

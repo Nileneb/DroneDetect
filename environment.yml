@@ -1,0 +1,31 @@
+# Conda-Umgebung für DroneFollow-Training (ML-Agents + torch) und TensorBoard.
+# Anlegen:    conda env create -f environment.yml
+# Aktualisieren nach Änderungen: conda env update -f environment.yml --prune
+# Wichtig: Versionen bewusst gepinnt. mlagents 1.1.0 erzwingt numpy<1.24, protobuf<3.21 und onnx==1.15.0.
+# Neuere Versionen (z. B. onnxscript, protobuf>=6) brechen den Trainer. Nicht ohne Test anheben.
+name: mlagents
+channels:
+  - defaults
+dependencies:
+  - python=3.10.12   # mlagents 1.1.0 erlaubt nur Python <= 3.10.12
+  - pip
+  - pip:
+      - mlagents==1.1.0
+      - mlagents-envs==1.1.0
+      - torch==2.14.1
+      - numpy==1.23.5
+      - onnx==1.15.0
+      - protobuf==3.20.3
+      - grpcio==1.48.2
+      - tensorboard==2.20.0
+      - tensorboard-data-server==0.7.2
+      - attrs==26.1.0
+      - cattrs==1.5.0
+      - h5py==3.16.0
+      - huggingface-hub==2.4.0
+      - Pillow==12.3.0
+      - PyYAML==6.0.3
+      - six==1.17.0
+      - setuptools==80.10.2
+      - packaging==26.3
+      - typing-extensions==4.16.0

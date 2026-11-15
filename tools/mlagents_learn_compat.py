@@ -36,10 +36,28 @@ def check_communication_compatibility(
     return True
 
 
+def use_legacy_onnx_export() -> None:
+    # WHY: torch >= 2.9 exports ONNX through the dynamo exporter, which needs `onnxscript`. mlagents pins
+    # onnx 1.15 / protobuf < 3.21, which cannot coexist with it. The TorchScript exporter needs neither.
+    import functools
+
+    import torch
+
+    original_export = torch.onnx.export
+
+    @functools.wraps(original_export)
+    def export(*args, **kwargs):
+        kwargs.setdefault("dynamo", False)
+        return original_export(*args, **kwargs)
+
+    torch.onnx.export = export
+
+
 def main_with_compatible_version_parser() -> None:
     UnityEnvironment._check_communication_compatibility = staticmethod(
         check_communication_compatibility
     )
+    use_legacy_onnx_export()
     main()
 
 
