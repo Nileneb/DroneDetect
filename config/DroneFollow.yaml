@@ -1,6 +1,22 @@
+# DroneFollow PPO, warm-started by behavioral cloning from the manual demo.
+# Policy inputs: 19 vector observations + 84x84 grayscale MiDaS depth;
+# outputs: four continuous actions and one discrete (land) branch.
+# WHY(sim-to-real): the demo was recorded before the camera/heading/gyro fixes, so its observations
+# differ from the current sim. BC only nudges the start (weaker, shorter); GAIL would reward
+# reproducing the stale observation distribution and is therefore disabled.
 behaviors:
   DroneFollow:
     trainer_type: ppo
+    behavioral_cloning:
+      demo_path: results/demonstrations/DroneFollowDemo.demo
+      strength: 0.5
+      steps: 100000
+      batch_size: 128
+      num_epoch: 5
+    reward_signals:
+      extrinsic:
+        gamma: 0.995
+        strength: 1.0
     hyperparameters:
       batch_size: 256
       buffer_size: 4096
@@ -15,14 +31,11 @@ behaviors:
       hidden_units: 256
       num_layers: 3
       vis_encode_type: simple
-    reward_signals:
-      extrinsic:
-        gamma: 0.995
-        strength: 1.0
-    max_steps: 1000000
+    max_steps: 500000
     time_horizon: 128
     summary_freq: 10000
     keep_checkpoints: 10
+    checkpoint_interval: 25000
 
 environment_parameters:
   follow_stage:
@@ -65,13 +78,7 @@ environment_parameters:
 env_settings:
   base_port: 5004
 
-# No automatic --initialize-from: DroneFollow uses 19 vector values, a
-# centered 84x84 grayscale depth image, and hybrid actions. Existing
-# DroneFollow and DroneCSI checkpoints do not have this visual input contract.
-# follow_stage controls target/detector difficulty and 60/90/120/180/240s
-# maximum flight duration. The agent rewards improvement and stable following,
-# then awards flightCompletionReward only after the stage duration is survived.
-
-# Use a modest 20% acceleration while keeping the Unity Editor responsive.
 engine_settings:
-  time_scale: 1.2
+  # WHY(training-speed): ML-Agents fixes 60 rendered frames per scaled second, so time_scale 4 still
+  # gives 15 camera frames per simulated second, enough for 10 Hz perception and decisions.
+  time_scale: 4

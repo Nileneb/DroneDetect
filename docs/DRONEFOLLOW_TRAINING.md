@@ -90,17 +90,14 @@ current episode's flight duration is complete. Stop Play mode when the
 demonstration is long enough. The new recording replaces
 `results/demonstrations/DroneFollowDemo.demo` only after a recording file has
 been created; the previous training demo remains available if recording or
-publishing fails. This is the path already configured for both behavioral
-cloning and GAIL.
+publishing fails. This is the path already configured for behavioral cloning.
 
 After recording, start a new trainer run to load the updated demo; a trainer
-that is already running does not reload demonstration files. The
-`config/DroneFollow.yaml` run is PPO-only. The
-`config/drone_training.yaml` additionally enables behavioral cloning and GAIL
-from the current manual recording. Start it with:
+that is already running does not reload demonstration files. `config/DroneFollow.yaml` warm-starts PPO with behavioral cloning from the
+recording. Start it with:
 
 ```sh
-mlagents-learn config/drone_training.yaml --run-id=drone_follow_demo_v1
+tools/train.sh drone_follow_real_v1
 ```
 
 Wait until the terminal reports that it is listening on port `5004`, then

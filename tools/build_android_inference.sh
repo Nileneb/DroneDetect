@@ -202,8 +202,8 @@ public static class DroneFollowAndroidBuildTemporary
                 throw new InvalidOperationException("The 84x84 grayscale depth output and RenderTextureSensor must be connected on the DroneFollowAgent.");
 
             MonoBehaviour[] components = agent.GetComponents<MonoBehaviour>();
-            if (!components.Any(component => component is IDroneFollowController))
-                throw new InvalidOperationException("The scene has no IDroneFollowController implementation.");
+            if (!components.Any(component => component is IDroneController))
+                throw new InvalidOperationException("The scene has no IDroneController implementation.");
             if (!components.Any(component => component is IDroneTargetDetectionSource))
                 throw new InvalidOperationException("The scene has no IDroneTargetDetectionSource implementation (for example, the YOLO adapter).");
 

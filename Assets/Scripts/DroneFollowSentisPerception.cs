@@ -3,12 +3,13 @@ using Unity.InferenceEngine;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityEngine.UI;
+using Random = UnityEngine.Random;
 
 /// <summary>
-/// Runs MiDaS depth estimation and YOLO person detection on the Main Camera
-/// frame, adapting their outputs to DroneFollow's existing sensors.
+/// Runs MiDaS depth estimation and YOLO person detection on the drone camera
+/// frame (simulated camera or decoded AR.Drone video), adapting their outputs
+/// to DroneFollow's depth sensor and detection contract.
 /// </summary>
-[RequireComponent(typeof(Camera))]
 public sealed class DroneFollowSentisPerception :
     MonoBehaviour,
     IDroneTargetDetectionSource,
@@ -44,6 +45,19 @@ public sealed class DroneFollowSentisPerception :
         Fixed
     }
 
+    public enum FrameSource
+    {
+        ObservationCamera,
+        External
+    }
+
+    struct DelayedDetection
+    {
+        public float ReleaseTime;
+        public DroneTargetDetection Detection;
+        public Rect ViewportBox;
+    }
+
     [Header("Models")]
     public ModelAsset midasLargeModel;
     public ModelAsset midasSmallModel;
@@ -57,6 +71,8 @@ public sealed class DroneFollowSentisPerception :
     // WHY(midas-quality, framing): the square center crop dropped ~44% of the 16:9 frame (people at the edges);
     // A/B on Agent1 showed stretching the full frame keeps those shapes and beats letterboxing, which wastes resolution.
     public InputFraming inputFraming = InputFraming.FullFrameStretch;
+    [Tooltip("ObservationCamera renders the simulator; External expects SubmitFrame() calls, e.g. from the AR.Drone video decoder.")]
+    public FrameSource frameSource = FrameSource.ObservationCamera;
     public Camera observationCamera;
     public RenderTexture rgbInput;
     public RenderTexture depthOutput;
@@ -79,6 +95,15 @@ public sealed class DroneFollowSentisPerception :
     [Header("YOLO output")]
     [Range(0f, 1f)] public float personScoreThreshold = 0.2f;
     [Min(0.01f)] public float maxDetectionAgeSeconds = 0.4f;
+
+    // WHY(sim-to-real, detection): on hardware the box arrives after Wi-Fi video + phone inference latency and
+    // YOLO misses frames; training with the same imperfections keeps the policy from relying on a perfect detector.
+    [Header("Training randomization (simulator only)")]
+    public bool randomizeDetections;
+    public Vector2 detectionLatencyRangeSeconds = new Vector2(0.05f, 0.25f);
+    [Range(0f, 0.5f)] public float detectionDropoutProbability = 0.08f;
+    [Range(0f, 0.2f)] public float detectionCenterJitter = 0.02f;
+    [Range(0f, 0.5f)] public float detectionHeightJitterFraction = 0.05f;
 
     Worker _depthWorker;
     Worker _yoloWorker;
@@ -106,6 +131,8 @@ public sealed class DroneFollowSentisPerception :
     float _nextYoloInferenceTime;
     float _yoloCaptureTime;
     int _resetGeneration;
+    float _episodeDetectionLatency;
+    readonly Queue<DelayedDetection> _delayedDetections = new Queue<DelayedDetection>();
 
     public int DetectionFramesProcessed { get; private set; }
     public float LastPersonScore { get; private set; }
@@ -114,6 +141,7 @@ public sealed class DroneFollowSentisPerception :
     {
         get
         {
+            ReleaseDelayedDetections();
             if (!_current.Visible ||
                 Time.time - _current.CaptureTime > maxDetectionAgeSeconds)
                 return DroneTargetDetection.None(Time.time);
@@ -124,9 +152,9 @@ public sealed class DroneFollowSentisPerception :
 
     void OnEnable()
     {
-        _camera = GetComponent<Camera>();
         if (observationCamera == null)
-            observationCamera = _camera;
+            observationCamera = GetComponent<Camera>();
+        _camera = observationCamera;
 
         ModelAsset depthAsset = depthModelChoice == DepthModelChoice.Small
             ? midasSmallModel
@@ -175,14 +203,37 @@ public sealed class DroneFollowSentisPerception :
 
 
         if (rgbInput == null)
-            Debug.LogError("[DroneFollowSentisPerception] Assign the Main Camera RGB RenderTexture.", this);
-        else if (observationCamera == null || observationCamera.targetTexture != rgbInput)
+        {
+            Debug.LogError("[DroneFollowSentisPerception] Assign the RGB input RenderTexture.", this);
+            return;
+        }
+
+        if (frameSource == FrameSource.External)
+            return;
+
+        if (observationCamera == null || observationCamera.targetTexture != rgbInput)
             Debug.LogError("[DroneFollowSentisPerception] The observation camera must render to the assigned RGB RenderTexture.", this);
+        else if (Mathf.Abs(observationCamera.fieldOfView - DroneFollowContract.CameraVerticalFovDegrees) > 0.5f)
+            Debug.LogError(
+                $"[DroneFollowSentisPerception] Observation camera FOV is {observationCamera.fieldOfView:F1}°, the AR.Drone camera has {DroneFollowContract.CameraVerticalFovDegrees}°. Re-run DroneDetect > Configure Active Scene for DroneFollow.",
+                this);
 
         if (GraphicsSettings.currentRenderPipeline == null)
             Camera.onPostRender += OnCameraPostRender;
         else
             RenderPipelineManager.endCameraRendering += OnEndCameraRendering;
+    }
+
+    /// <summary>Feeds one externally decoded camera frame (External frame source).</summary>
+    public void SubmitFrame(Texture frame)
+    {
+        if (frameSource != FrameSource.External)
+            throw new System.InvalidOperationException("[DroneFollowSentisPerception] SubmitFrame requires the External frame source.");
+        if (frame == null || rgbInput == null)
+            return;
+
+        Graphics.Blit(frame, rgbInput);
+        ProcessCameraFrame();
     }
 
     void OnDisable()
@@ -216,6 +267,7 @@ public sealed class DroneFollowSentisPerception :
         _hasDepthRange = false;
         _depthPending = false;
         _yoloPending = false;
+        _delayedDetections.Clear();
     }
 
     void OnCameraPostRender(Camera renderedCamera)
@@ -591,11 +643,10 @@ public sealed class DroneFollowSentisPerception :
 
         DetectionFramesProcessed++;
         LastPersonScore = bestScore;
-        if (candidates.Count == 0)
+        if (candidates.Count == 0 ||
+            (randomizeDetections && Random.value < detectionDropoutProbability))
         {
-            _current = DroneTargetDetection.None(_yoloCaptureTime);
-            _currentViewportBox = Rect.zero;
-            _hasCurrentViewportBox = false;
+            PublishDetection(DroneTargetDetection.None(_yoloCaptureTime), Rect.zero);
             return;
         }
 
@@ -622,19 +673,55 @@ public sealed class DroneFollowSentisPerception :
         }
 
         DetectionCandidate best = kept[0];
-        _current = new DroneTargetDetection(
+        if (randomizeDetections)
+        {
+            best.CenterX += Gaussian() * detectionCenterJitter * 0.5f;
+            best.CenterY += Gaussian() * detectionCenterJitter * 0.5f;
+            best.Height = Mathf.Clamp01(best.Height * (1f + Gaussian() * detectionHeightJitterFraction));
+        }
+
+        var detection = new DroneTargetDetection(
             best.CenterX * 2f - 1f,
             1f - best.CenterY * 2f,
             best.Height,
             true,
             _yoloCaptureTime);
-
-        _currentViewportBox = new Rect(
+        var viewportBox = new Rect(
             crop.x + (best.CenterX - best.Width * 0.5f) * crop.width,
             crop.y + (1f - best.CenterY - best.Height * 0.5f) * crop.height,
             best.Width * crop.width,
             best.Height * crop.height);
-        _hasCurrentViewportBox = true;
+        PublishDetection(detection, viewportBox);
+    }
+
+    void PublishDetection(DroneTargetDetection detection, Rect viewportBox)
+    {
+        float latency = randomizeDetections ? _episodeDetectionLatency : 0f;
+        _delayedDetections.Enqueue(new DelayedDetection
+        {
+            ReleaseTime = Time.time + latency,
+            Detection = detection,
+            ViewportBox = viewportBox
+        });
+        ReleaseDelayedDetections();
+    }
+
+    void ReleaseDelayedDetections()
+    {
+        while (_delayedDetections.Count > 0 && _delayedDetections.Peek().ReleaseTime <= Time.time)
+        {
+            DelayedDetection released = _delayedDetections.Dequeue();
+            _current = released.Detection;
+            _currentViewportBox = released.ViewportBox;
+            _hasCurrentViewportBox = released.Detection.Visible;
+        }
+    }
+
+    static float Gaussian()
+    {
+        float u1 = 1f - Random.value;
+        float u2 = Random.value;
+        return Mathf.Sqrt(-2f * Mathf.Log(u1)) * Mathf.Cos(2f * Mathf.PI * u2);
     }
 
     static float CalculateIoU(DetectionCandidate a, DetectionCandidate b)
@@ -672,6 +759,8 @@ public sealed class DroneFollowSentisPerception :
     public void ResetDetection()
     {
         _resetGeneration++;
+        _delayedDetections.Clear();
+        _episodeDetectionLatency = Random.Range(detectionLatencyRangeSeconds.x, detectionLatencyRangeSeconds.y);
         _current = DroneTargetDetection.None(Time.time);
         _currentViewportBox = Rect.zero;
         _hasCurrentViewportBox = false;

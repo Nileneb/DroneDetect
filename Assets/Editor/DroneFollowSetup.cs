@@ -25,7 +25,9 @@ public static class DroneFollowSetup
     const string RgbTextureAssetPath = "Assets/RenderTextures/MainCameraRGB.renderTexture";
     const string TargetInstanceName = "DroneFollowTarget";
     const string MainCameraCanvasName = "DroneFollowMainCameraCanvas";
-    const string LegacyControlPanelName = "DroneControlPanel";
+    // Objects of the removed Shepherd/multiplayer prototype; their scripts no longer exist.
+    static readonly string[] LegacyObjectNames =
+        { "DroneControlPanel", "ShepherdGameManager", "RevbClient", "LoginScreen", "MatchmakeManager" };
     const string MainCameraPreviewName = "DroneFollowMainCameraPreview";
     const string MainCameraScreenName = "Screen1_MainCamera";
     const string DepthScreenName = "Screen2_Depth";
@@ -37,19 +39,22 @@ public static class DroneFollowSetup
     const string BoundingBoxOverlayCanvasName = "DroneFollowBoundingBoxOverlayCanvas";
 
     [MenuItem("DroneDetect/Configure Active Scene for DroneFollow")]
-    public static void ConfigureActiveScene()
+    static void ConfigureActiveSceneMenu() => ConfigureActiveScene();
+
+    /// <summary>Wires the Agent1 training scene; returns false (after logging why) if it cannot.</summary>
+    public static bool ConfigureActiveScene()
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode)
         {
             Debug.LogError("[DroneFollowSetup] Stop Play mode before configuring DroneFollow.");
-            return;
+            return false;
         }
 
         var simulatedDrone = FindTrainingSceneDrone();
         if (simulatedDrone == null)
         {
             if (!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo())
-                return;
+                return false;
 
             EditorSceneManager.OpenScene(TrainingScenePath, OpenSceneMode.Single);
             simulatedDrone = FindTrainingSceneDrone();
@@ -58,11 +63,10 @@ public static class DroneFollowSetup
         if (simulatedDrone == null)
         {
             Debug.LogError($"[DroneFollowSetup] No active SimulatedDroneController was found in {TrainingScenePath}. Check the scene and drone prefab.");
-            return;
+            return false;
         }
 
         GameObject droneObject = simulatedDrone.gameObject;
-        var legacyAgent = droneObject.GetComponent<DroneAgent>();
 
         // Main Camera supplies RGB, detection, the box overlay, and the depth
         // preview. GroundCam remains a separate downward-looking preview.
@@ -71,7 +75,7 @@ public static class DroneFollowSetup
         if (mainCamera == null)
         {
             Debug.LogError("[DroneFollowSetup] A child camera named 'Main Camera' was not found. Perception was not configured; no fallback camera will be used.");
-            return;
+            return false;
         }
         Camera camera = mainCamera;
 
@@ -82,7 +86,7 @@ public static class DroneFollowSetup
         {
             Debug.LogError(
                 $"[DroneFollowSetup] Removed {removedMissingScripts} missing script component(s), but {remainingMissingScripts} remain in the training scene. Repair the source prefab(s) before configuring the scene.");
-            return;
+            return false;
         }
 
         Undo.RecordObject(droneObject, "Configure DroneFollow");
@@ -94,14 +98,14 @@ public static class DroneFollowSetup
             if (targetPrefab == null)
             {
                 Debug.LogError($"[DroneFollowSetup] Target prefab not found at {TargetPrefabPath}.");
-                return;
+                return false;
             }
 
             targetObject = PrefabUtility.InstantiatePrefab(targetPrefab, trainingScene) as GameObject;
             if (targetObject == null)
             {
                 Debug.LogError($"[DroneFollowSetup] Could not instantiate target prefab {TargetPrefabPath}.");
-                return;
+                return false;
             }
             Undo.RegisterCreatedObjectUndo(targetObject, "Create DroneFollow target");
             targetObject.name = TargetInstanceName;
@@ -116,24 +120,14 @@ public static class DroneFollowSetup
         if (target.GetComponentInChildren<Renderer>(true) == null)
         {
             Debug.LogError($"[DroneFollowSetup] {TargetPrefabPath} has no Renderer in its hierarchy; detector projection cannot produce a box.");
-            return;
-        }
-
-        if (legacyAgent != null && legacyAgent.targets != null)
-        {
-            foreach (GameObject waypoint in legacyAgent.targets)
-            {
-                if (waypoint == null || waypoint == targetObject) continue;
-                Undo.RecordObject(waypoint, "Hide DroneCSI waypoint");
-                waypoint.SetActive(false);
-            }
+            return false;
         }
 
         var behavior = droneObject.GetComponent<BehaviorParameters>();
         if (behavior == null)
         {
             Debug.LogError("[DroneFollowSetup] BehaviorParameters component is missing.");
-            return;
+            return false;
         }
 
         // Drone.prefab and the inactive Shepherd prefab both contain camera
@@ -184,10 +178,6 @@ public static class DroneFollowSetup
             EditorUtility.SetDirty(displayCamera);
         }
 
-        var controllerAdapter = droneObject.GetComponent<SimulatedDroneFollowControllerAdapter>();
-        if (controllerAdapter == null)
-            controllerAdapter = Undo.AddComponent<SimulatedDroneFollowControllerAdapter>(droneObject);
-
         ModelAsset midasLargeModel = AssetDatabase.LoadAssetAtPath<ModelAsset>(MidasLargeModelAssetPath);
         ModelAsset midasSmallModel = AssetDatabase.LoadAssetAtPath<ModelAsset>(MidasSmallModelAssetPath);
         ModelAsset yoloModel = AssetDatabase.LoadAssetAtPath<ModelAsset>(YoloModelAssetPath);
@@ -195,14 +185,14 @@ public static class DroneFollowSetup
         {
             Debug.LogError(
                 $"[DroneFollowSetup] Required models are missing. Expected {MidasLargeModelAssetPath}, {MidasSmallModelAssetPath}, and {YoloModelAssetPath}.");
-            return;
+            return false;
         }
 
         RenderTexture depthTexture = AssetDatabase.LoadAssetAtPath<RenderTexture>(DepthTextureAssetPath);
         if (depthTexture == null)
         {
             Debug.LogError($"[DroneFollowSetup] The depth observation RenderTexture is missing. Expected a RenderTexture at {DepthTextureAssetPath}.");
-            return;
+            return false;
         }
 
         if (depthTexture.width != DroneFollowContract.DepthObservationWidth ||
@@ -210,14 +200,16 @@ public static class DroneFollowSetup
         {
             Debug.LogError(
                 $"[DroneFollowSetup] Depth RenderTexture must be {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight}, but is {depthTexture.width}x{depthTexture.height}. Resize the asset before configuring the scene.");
-            return;
+            return false;
         }
 
         RenderTexture rgbTexture = AssetDatabase.LoadAssetAtPath<RenderTexture>(RgbTextureAssetPath);
-        if (rgbTexture == null || rgbTexture.width != 640 || rgbTexture.height != 360)
+        if (rgbTexture == null ||
+            rgbTexture.width != DroneFollowContract.CameraWidth ||
+            rgbTexture.height != DroneFollowContract.CameraHeight)
         {
-            Debug.LogError($"[DroneFollowSetup] Expected a 640x360 RGB RenderTexture at {RgbTextureAssetPath}.");
-            return;
+            Debug.LogError($"[DroneFollowSetup] Expected a {DroneFollowContract.CameraWidth}x{DroneFollowContract.CameraHeight} RGB RenderTexture at {RgbTextureAssetPath}.");
+            return false;
         }
 
         RawImage mainCameraPreview = ConfigureMonitorLayout(
@@ -230,13 +222,19 @@ public static class DroneFollowSetup
         if (depthPreview == null)
         {
             Debug.LogError($"[DroneFollowSetup] Depth preview RawImage '{DepthPreviewName}' was not created.");
-            return;
+            return false;
         }
 
-        DisableLegacyControlPanel(trainingScene);
+        RemoveLegacyObjects(trainingScene);
         Undo.RecordObject(camera, "Route Main Camera through RGB RenderTexture");
         camera.targetTexture = rgbTexture;
         camera.targetDisplay = 0;
+        camera.fieldOfView = DroneFollowContract.CameraVerticalFovDegrees;
+        Undo.RecordObject(camera.transform, "Align Main Camera with the flight axis");
+        // WHY(sim-to-real, camera): the prefab yawed Main Camera 45° off the flight axis; the AR.Drone camera looks
+        // straight ahead, so a policy trained on the yawed view would fly diagonally on hardware.
+        camera.transform.rotation = droneObject.transform.rotation;
+        RecordPrefabInstanceOverride(camera.transform);
         EditorUtility.SetDirty(camera);
         if (PrefabUtility.IsPartOfPrefabInstance(camera))
             PrefabUtility.RecordPrefabInstancePropertyModifications(camera);
@@ -263,6 +261,8 @@ public static class DroneFollowSetup
         sentisPerception.depthInferenceRateHz = 15f;
         sentisPerception.detectionInferenceRateHz = DroneFollowContract.DecisionRateHz;
         sentisPerception.personScoreThreshold = 0.2f;
+        sentisPerception.frameSource = DroneFollowSentisPerception.FrameSource.ObservationCamera;
+        sentisPerception.randomizeDetections = true;
         sentisPerception.enabled = true;
         RecordPrefabInstanceOverride(sentisPerception);
         EditorUtility.SetDirty(sentisPerception);
@@ -316,16 +316,10 @@ public static class DroneFollowSetup
         // DecisionRequester binds to the first Agent returned by GetComponent.
         // Keeping multiple Agent components on this GameObject routes requests
         // to the legacy component instead of DroneFollowAgent.
-        if (legacyAgent != null)
-            Undo.DestroyObjectImmediate(legacyAgent);
-        var shepherdAgent = droneObject.GetComponent<ShepherdDroneAgent>();
-        if (shepherdAgent != null)
-            Undo.DestroyObjectImmediate(shepherdAgent);
-
         if (droneObject.GetComponent<Agent>() != followAgent)
         {
             Debug.LogError("[DroneFollowSetup] DroneFollowAgent is not the only Agent on the drone; DecisionRequester would target a different Agent.");
-            return;
+            return false;
         }
         if (followAgent.perception != sentisPerception ||
             sentisPerception.gameObject != mainCamera.gameObject ||
@@ -335,7 +329,7 @@ public static class DroneFollowSetup
             sentisPerception.depthOutput != depthSensor.RenderTexture)
         {
             Debug.LogError("[DroneFollowSetup] RGB/depth perception wiring did not persist on Main Camera, its preview, and the Agent depth sensor.");
-            return;
+            return false;
         }
 
         Undo.RecordObject(behavior, "Set DroneFollow behavior contract");
@@ -374,6 +368,7 @@ public static class DroneFollowSetup
         Selection.activeGameObject = droneObject;
 
         Debug.Log($"[DroneFollowSetup] Agent1 configured: perception on '{mainCamera.name}' is assigned to DroneFollowAgent and writes to its grayscale depth sensor; {DroneFollowContract.ObservationSize} vector observations + {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight} image, {DroneFollowContract.ActionSize} continuous actions + {DroneFollowContract.DiscreteBranchSize} discrete branch, {actualRateHz:F1} Hz; removed {removedCameraSensors} CameraSensorComponent(s) and {removedMissingScripts} missing script(s).");
+        return true;
     }
 
     static Camera FindChildCamera(GameObject root, string cameraName)
@@ -629,15 +624,14 @@ public static class DroneFollowSetup
         EditorUtility.SetDirty(decoration);
     }
 
-    static void DisableLegacyControlPanel(Scene scene)
+    static void RemoveLegacyObjects(Scene scene)
     {
-        GameObject controlPanel = FindNamedObject(scene, LegacyControlPanelName);
-        if (controlPanel == null || !controlPanel.activeSelf)
-            return;
-
-        Undo.RecordObject(controlPanel, "Hide legacy DroneFollow control panel");
-        controlPanel.SetActive(false);
-        EditorUtility.SetDirty(controlPanel);
+        foreach (string objectName in LegacyObjectNames)
+        {
+            GameObject legacyObject = FindNamedObject(scene, objectName);
+            if (legacyObject != null)
+                Undo.DestroyObjectImmediate(legacyObject);
+        }
     }
 
     static void ConfigureBoundingBoxOverlay(

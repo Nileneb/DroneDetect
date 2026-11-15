@@ -1,32 +1,14 @@
 using UnityEngine;
 
 /// <summary>
-/// SimulatedDroneController — Digital-Twin der AR-Drone 2.0.
+/// Physics digital twin of the Parrot AR.Drone 2.0 (420 g, 12° max tilt,
+/// 5 m/s horizontal, 0.7 m/s vertical, 100°/s yaw, ~150 ms motor lag).
+/// Tilt drives horizontal motion like a real quadrotor; all-zero commands
+/// switch to auto-hover as on the real drone.
 ///
-/// Implementiert IDroneController mit realistischer Physik:
-///   - Masse: 420g
-///   - Max horizontal speed: 5 m/s
-///   - Max vertical speed: 0.7 m/s
-///   - Max yaw rate: 100°/s
-///   - Max tilt: 12°
-///   - Response time: ~150ms (Motor-Lag, 1st-Order)
-///
-/// Vorzeichen-Konvention (Unity-nativ):
-///   forward  → +pitch  (Nase runter = vorwaerts)
-///   left     → -roll   (nach links kippen = links fliegen)
-///   turn     → +yaw    (positiv = gegen Uhrzeigersinn von oben)
-///   up       → +gaz    (positiv = steigen)
-///
-/// Auto-Hover aus update_teleop:
-///   Wenn alle 4 Achsen < _EPS (1e-6) → Hover-Modus
-///
-/// State-Machine:
-///   Landed → TakingOff → Hovering ↔ Flying → Landing → Landed
-///   + Emergency-Toggle
-///
-/// Tilt-basierte Bewegung:
-///   Neigung (Pitch/Roll) steuert Horizontalbewegung — wie bei echter Drohne.
-///   Visuelle Neigung + physikalische Kraft sind gekoppelt.
+/// Command mapping: forward → +pitch (nose down), left → −roll,
+/// up → +gaz, turn → +yaw (clockwise seen from above).
+/// State machine: Landed → TakingOff → Hovering ↔ Flying → Landing → Landed, plus Emergency.
 /// </summary>
 [RequireComponent(typeof(Rigidbody))]
 public class SimulatedDroneController : MonoBehaviour, IDroneController
@@ -51,6 +33,11 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
 
     [Tooltip("Motor-Response-Time in Sekunden (~150ms bei AR-Drone 2.0)")]
     public float responseTime = 0.15f;
+
+    // WHY(sim-to-real, dynamics): the real drone's command response varies with battery, hull and Wi-Fi delay;
+    // training across a range keeps the policy from overfitting one exact lag.
+    [Tooltip("Training resets draw responseTime from this range (seconds). Equal values disable randomization.")]
+    public Vector2 trainingResponseTimeRange = new Vector2(0.12f, 0.35f);
 
     [Header("Hover Damping")]
     [Tooltip("Horizontale Geschwindigkeitsdaempfung im Hover-Modus (0..1 pro Sekunde)")]
@@ -91,7 +78,7 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
     float _cmdPitch;   // forward → +pitch (Nase runter = vorwaerts)
     float _cmdRoll;    // left → -roll (links kippen = links fliegen)
     float _cmdGaz;     // up → +gaz
-    float _cmdYawRate; // turn → +yaw (positiv = CCW von oben)
+    float _cmdYawRate; // turn → +yaw (clockwise seen from above)
 
     // Gefilterter Zustand (1st-Order Lag fuer Motor-Response)
     float _filteredPitch;
@@ -474,7 +461,7 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
         _cmdPitch = Mathf.Clamp(forward, -1f, 1f);      // forward → +pitch (Nase runter = vorwaerts)
         _cmdRoll = Mathf.Clamp(-left, -1f, 1f);         // left negiert → -roll (links kippen = links)
         _cmdGaz = Mathf.Clamp(up, -1f, 1f);              // up → +gaz
-        _cmdYawRate = Mathf.Clamp(turn, -1f, 1f);       // turn → +yaw (CCW von oben)
+        _cmdYawRate = Mathf.Clamp(turn, -1f, 1f);       // turn → +yaw (clockwise seen from above)
 
         // State-Wechsel Hovering → Flying (wenn Kommando != 0)
         if (_state == DroneState.Hovering)
@@ -510,6 +497,7 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
         _state = DroneState.Landed;
         _stateTimer = 0f;
         _battery = 100f;
+        responseTime = Random.Range(trainingResponseTimeRange.x, trainingResponseTimeRange.y);
 
         _cmdPitch = _cmdRoll = _cmdGaz = _cmdYawRate = 0f;
         _filteredPitch = _filteredRoll = _filteredGaz = _filteredYawRate = 0f;

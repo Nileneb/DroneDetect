@@ -11,7 +11,7 @@ When a separate inference scene is ready:
    DroneFollow model assigned to its `BehaviorParameters`, `Behavior Type` set
    to `Inference Only`, a matching `DecisionRequester`, and a grayscale
    84x84 depth sensor connected to the camera depth output.
-3. Implement and attach the production `IDroneFollowController` adapter. The
+3. Implement and attach the production `IDroneController` adapter. The
    training scene uses `DroneFollowSentisPerception` on Main Camera for MiDaS
    depth and YOLO person detection. Configure that component and the same model
    assets in any separate inference scene; setup configures only the active

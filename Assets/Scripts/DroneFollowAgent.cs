@@ -7,10 +7,14 @@ using Unity.MLAgents.Sensors;
 /// DroneFollow policy: vector state plus the attached grayscale depth sensor.
 /// CollectObservations supplies flight state, detector box, previous commands,
 /// and damage; ground truth is used only for training reward shaping.
+/// In deployment mode (real drone) episodes never end, the operator owns
+/// takeoff/landing, and no ground truth or rewards are used.
 /// </summary>
 public sealed class DroneFollowAgent : Agent
 {
     public DroneFollowSentisPerception perception;
+    [Tooltip("Real-drone operation: no episode limit, no rewards, takeoff/landing stay with the operator.")]
+    public bool deploymentMode;
 
     [Header("Follow task")]
     public Transform followTarget;
@@ -26,6 +30,8 @@ public sealed class DroneFollowAgent : Agent
     [Min(0f)] public float smoothActionPenalty = 0.0005f;
     [Min(0f)] public float flightCompletionReward = 0.75f;
     [Range(0f, 1f)] public float safeLandingMinimumFlightFraction = 1f;
+    [Tooltip("Training resets yaw the drone randomly by up to this angle so the target does not always start centered.")]
+    [Range(0f, 90f)] public float spawnYawJitterDegrees = 30f;
     [Min(0f)] public float earlyLandingPenalty = 0.02f;
 
     [Header("Crash damage")]
@@ -42,7 +48,7 @@ public sealed class DroneFollowAgent : Agent
     [Min(0f)] public float impactCooldownSeconds = 0.5f;
     [Min(0f)] public float safeLandingReward = 0.5f;
 
-    IDroneFollowController _controller;
+    IDroneController _controller;
     IDroneTargetDetectionSource _detector;
     DroneFollowSentisPerception _perception;
     Vector3 _spawnPosition;
@@ -63,6 +69,11 @@ public sealed class DroneFollowAgent : Agent
     int _episodeDecisionLimit;
     int _curriculumStage;
     bool _finalCurriculumStageCompleted;
+    bool _hasAttitudeSample;
+    Vector3 _previousAttitudeDeg;
+    float _previousAttitudeTime;
+    bool _hasHeadingReference;
+    float _headingReferenceDeg;
 
     public int CurrentCurriculumStage => _curriculumStage;
     public int CurrentEpisodeFlightDecisions => _episodeFlightDecisions;
@@ -92,7 +103,7 @@ public sealed class DroneFollowAgent : Agent
             if (component == null)
                 continue;
 
-            if (_controller == null) _controller = component as IDroneFollowController;
+            if (_controller == null) _controller = component as IDroneController;
             if (_detector == null &&
                 component.isActiveAndEnabled &&
                 component is IDroneTargetDetectionSource detectionSource)
@@ -108,10 +119,10 @@ public sealed class DroneFollowAgent : Agent
         }
 
         if (_controller == null)
-            Debug.LogError("[DroneFollowAgent] No IDroneFollowController is attached.", this);
+            Debug.LogError("[DroneFollowAgent] No IDroneController is attached.", this);
         if (_detector == null)
             Debug.LogError("[DroneFollowAgent] No target detection source is attached.", this);
-        if (followTarget == null)
+        if (followTarget == null && !deploymentMode)
             Debug.LogError("[DroneFollowAgent] Follow target is not assigned.", this);
 
         RenderTextureSensorComponent depthSensor = GetComponent<RenderTextureSensorComponent>();
@@ -150,6 +161,11 @@ public sealed class DroneFollowAgent : Agent
         _previousAction = Vector4.zero;
         _hasPreviousFollowState = false;
         _episodeFlightDecisions = 0;
+        _hasAttitudeSample = false;
+        _hasHeadingReference = false;
+        _detector?.ResetDetection();
+        if (deploymentMode)
+            return;
 
         _curriculumStage = Mathf.Clamp(
             Mathf.RoundToInt(Academy.Instance.EnvironmentParameters.GetWithDefault("follow_stage", 0f)),
@@ -171,11 +187,11 @@ public sealed class DroneFollowAgent : Agent
             }
         }
 
-        _detector?.ResetDetection();
-
-        var simulated = _controller as SimulatedDroneFollowControllerAdapter;
-        if (simulated != null)
-            simulated.ResetForTraining(_spawnPosition, _spawnRotation);
+        if (_controller is SimulatedDroneController simulated)
+        {
+            Quaternion spawnYaw = Quaternion.Euler(0f, Random.Range(-spawnYawJitterDegrees, spawnYawJitterDegrees), 0f);
+            simulated.ResetAndTakeoff(_spawnPosition, spawnYaw * _spawnRotation);
+        }
         else if (_controller != null && _controller.State == DroneState.Landed)
             _controller.Takeoff();
 
@@ -191,7 +207,8 @@ public sealed class DroneFollowAgent : Agent
     public override void CollectObservations(VectorSensor sensor)
     {
         NavdataPacket nav = _controller != null ? _controller.Navdata : null;
-        Vector3 gyro = _controller != null ? _controller.BodyAngularVelocityRadSec : Vector3.zero;
+        Vector3 gyro = EstimateBodyRatesRadSec(nav);
+        float relativeYaw = RelativeHeadingDeg(nav);
 
         // Proprioception: fixed 10-value layout, shared by sim and hardware adapter.
         sensor.AddObservation(nav != null ? Mathf.Clamp01(nav.altitude / 10f) : 0f);
@@ -200,7 +217,7 @@ public sealed class DroneFollowAgent : Agent
         sensor.AddObservation(nav != null ? Mathf.Clamp(nav.vz, -1f, 1f) : 0f);
         sensor.AddObservation(nav != null ? Mathf.Clamp(nav.rotX / 180f, -1f, 1f) : 0f);
         sensor.AddObservation(nav != null ? Mathf.Clamp(nav.rotY / 180f, -1f, 1f) : 0f);
-        sensor.AddObservation(nav != null ? Mathf.Repeat(nav.rotZ, 360f) / 360f : 0f);
+        sensor.AddObservation(relativeYaw / 180f);
         sensor.AddObservation(Mathf.Clamp(gyro.x / 5f, -1f, 1f));
         sensor.AddObservation(Mathf.Clamp(gyro.y / 5f, -1f, 1f));
         sensor.AddObservation(Mathf.Clamp(gyro.z / 5f, -1f, 1f));
@@ -232,6 +249,47 @@ public sealed class DroneFollowAgent : Agent
         sensor.AddObservation(_damage);
     }
 
+    // WHY(sim-to-real, gyro): AR.Drone demo navdata has no gyro, so sim and hardware both differentiate the
+    // reported attitude at the decision rate; identical estimation keeps the observation distribution identical.
+    Vector3 EstimateBodyRatesRadSec(NavdataPacket nav)
+    {
+        if (nav == null)
+            return Vector3.zero;
+
+        var attitude = new Vector3(nav.rotY, nav.rotZ, nav.rotX);
+        Vector3 rates = Vector3.zero;
+        float dt = Time.time - _previousAttitudeTime;
+        if (_hasAttitudeSample && dt > 1e-3f)
+        {
+            rates = new Vector3(
+                Mathf.DeltaAngle(_previousAttitudeDeg.x, attitude.x),
+                Mathf.DeltaAngle(_previousAttitudeDeg.y, attitude.y),
+                Mathf.DeltaAngle(_previousAttitudeDeg.z, attitude.z)) * (Mathf.Deg2Rad / dt);
+        }
+
+        _previousAttitudeDeg = attitude;
+        _previousAttitudeTime = Time.time;
+        _hasAttitudeSample = true;
+        return rates;
+    }
+
+    // WHY(sim-to-real, heading): the real drone's yaw is only meaningful relative to where it took off,
+    // so the policy sees heading relative to the first in-flight observation of the episode.
+    float RelativeHeadingDeg(NavdataPacket nav)
+    {
+        if (nav == null)
+            return 0f;
+
+        bool airborne = _controller.State == DroneState.Hovering || _controller.State == DroneState.Flying;
+        if (!_hasHeadingReference && airborne)
+        {
+            _headingReferenceDeg = nav.rotZ;
+            _hasHeadingReference = true;
+        }
+
+        return _hasHeadingReference ? Mathf.DeltaAngle(_headingReferenceDeg, nav.rotZ) : 0f;
+    }
+
     public override void OnActionReceived(ActionBuffers actions)
     {
         if (_ending || _controller == null) return;
@@ -256,6 +314,12 @@ public sealed class DroneFollowAgent : Agent
                 $"{diagnosticActions[2]:F2}, {diagnosticActions[3]:F2}), " +
                 $"land={actions.DiscreteActions[0]}, position={transform.position}.",
                 this);
+        }
+
+        if (deploymentMode)
+        {
+            ApplyDeploymentAction(actions.ContinuousActions);
+            return;
         }
 
         if (_controller.State == DroneState.Landed)
@@ -319,6 +383,23 @@ public sealed class DroneFollowAgent : Agent
             AddReward(flightCompletionReward * Mathf.Lerp(1f, 0.5f, _damage));
             EndEpisode();
         }
+    }
+
+    void ApplyDeploymentAction(ActionSegment<float> ca)
+    {
+        if (_controller.State != DroneState.Hovering && _controller.State != DroneState.Flying)
+        {
+            _previousAction = Vector4.zero;
+            return;
+        }
+
+        // The landing branch is ignored on hardware: landing stays an operator decision.
+        _previousAction = new Vector4(
+            Mathf.Clamp(ca[0], -1f, 1f),
+            Mathf.Clamp(ca[1], -1f, 1f),
+            Mathf.Clamp(ca[2], -1f, 1f),
+            Mathf.Clamp(ca[3], -1f, 1f));
+        _controller.Move(_previousAction.x, _previousAction.y, _previousAction.z, _previousAction.w);
     }
 
     void AddFollowRewards(Vector4 previousAction, Vector4 currentAction)
@@ -399,7 +480,7 @@ public sealed class DroneFollowAgent : Agent
 
     void OnCollisionEnter(Collision collision)
     {
-        if (_ending || collision == null || !_flightHasStarted || _landingRequested ||
+        if (deploymentMode || _ending || collision == null || !_flightHasStarted || _landingRequested ||
             _controller == null || _controller.State == DroneState.Landing ||
             _controller.State == DroneState.Landed)
             return;
@@ -413,7 +494,7 @@ public sealed class DroneFollowAgent : Agent
 
     void FixedUpdate()
     {
-        if (_ending || _controller == null) return;
+        if (deploymentMode || _ending || _controller == null) return;
 
         if (_controller.State == DroneState.Hovering || _controller.State == DroneState.Flying)
             _flightHasStarted = true;

@@ -19,22 +19,18 @@ public static class DroneFollowContract
     public const int LandAction = 1;
     public const float DecisionRateHz = 10f;
 
+    // WHY(sim-to-real, camera): AR.Drone 2.0 front camera streams 640x360 through a 92° diagonal lens
+    // (~54° vertical FOV), looking straight along the flight axis. The sim camera must match it.
+    public const int CameraWidth = 640;
+    public const int CameraHeight = 360;
+    public const float CameraVerticalFovDegrees = 53.8f;
+
     /// <summary>
     /// At the project's default 50 Hz fixed timestep this produces 10 policy
     /// decisions per simulated second. Scene setup derives the period from the
     /// actual Time.fixedDeltaTime and warns if it cannot represent 10 Hz.
     /// </summary>
     public const int DecisionPeriodAt50Hz = 5;
-}
-
-/// <summary>
-/// Shared sensor/action contract for DroneFollow. A real hardware controller can
-/// implement this alongside IDroneController without exposing simulator objects.
-/// </summary>
-public interface IDroneFollowController : IDroneController
-{
-    /// <summary>Angular rate in canonical body-frame XYZ, radians per second.</summary>
-    Vector3 BodyAngularVelocityRadSec { get; }
 }
 
 /// <summary>Normalized detector output consumed by the DroneFollow policy.</summary>
