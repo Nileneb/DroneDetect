@@ -141,8 +141,9 @@ be in that folder.
 
 **DroneDetect > DroneFollow > Record Scripted Expert Demonstration** flies the ground-truth PD follower
 at training speed (`time_scale` 4) and walks the paths in turn (difficulty 0, 1, 2, 3, ...). It records
-5 000 decisions (~500 simulated seconds, about two and a half loops), then stops recording; **stop Play
-mode** to publish `results/demonstrations/DroneFollowDemo.demo`.
+5 000 decisions (~500 simulated seconds, about two and a half loops). ML-Agents' recorder then **ends
+Play mode by itself** – that is the normal finish, not a crash – and the editor publishes
+`results/demonstrations/DroneFollowDemo.demo` (outside `Assets/`, so not visible in the Project window).
 The training config currently uses it; switch `demo_path` to `results/demonstrations/manual` once manual flights exist.
 
 After recording, start a new trainer run to load the updated demo; a trainer

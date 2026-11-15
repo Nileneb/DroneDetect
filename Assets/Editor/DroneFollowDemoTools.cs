@@ -98,7 +98,7 @@ public static class DroneFollowDemoTools
         SessionState.SetBool(ExpertKey, scriptedExpert);
         SessionState.SetBool(PendingKey, true);
         Debug.Log(scriptedExpert
-            ? $"[DroneFollowDemo] Starting scripted-expert recording. Stop Play mode to publish it as '{DemoName}.demo' in '{DemoDirectory}'."
+            ? $"[DroneFollowDemo] Starting scripted-expert recording. Play mode ends by itself after {ExpertDemoSteps} decisions; the recording is then published as '{DemoName}.demo' in '{DemoDirectory}'."
             : $"[DroneFollowDemo] Starting manual recording. Gamepad: left stick = move, right stick = look (yaw), R2/L2 = climb/descend; keyboard fallback WASD, Space/Shift, Q/E. The sim lands after the target is home and starts the next path. Stop Play mode to keep the recording in '{ManualDemoDirectory}'.");
         EditorApplication.isPlaying = true;
     }
@@ -152,9 +152,12 @@ public static class DroneFollowDemoTools
         if (scriptedExpert)
         {
             agent.useScriptedExpert = true;
+            // WHY(bug, path order): the first episode began before the expert flag was set and walked path 0
+            // as a non-expert episode, so the expert's own sequence repeated path 0. Restart it as expert.
+            agent.EndEpisode();
             Time.timeScale = ExpertTimeScale;
             Time.captureFramerate = ExpertCaptureFramerate;
-            Debug.Log($"[DroneFollowDemo] Scripted expert is flying; {ExpertDemoSteps} steps are recorded, then stop Play mode to publish.");
+            Debug.Log($"[DroneFollowDemo] Scripted expert is flying; after {ExpertDemoSteps} decisions ML-Agents stops Play mode by itself and the recording is published as '{DemoName}.demo'.");
         }
         else
         {
