@@ -164,6 +164,26 @@ public static class DroneFollowSetup
             EditorUtility.SetDirty(groundCamera);
         }
 
+        Camera displayCamera = droneObject.GetComponent<Camera>();
+        if (displayCamera != null)
+        {
+            Undo.RecordObject(displayCamera, "Turn Drone root camera into an empty display camera");
+            // WHY(training-speed, camera): Screen 1 shows Main Camera through MainCameraRGB on an overlay canvas, so this
+            // camera rendered the whole scene a second time underneath it. It only stays to keep Display 1 "rendering"
+            // (disabling it shows Unity's "No cameras rendering" banner), so it must draw nothing.
+            displayCamera.cullingMask = 0;
+            displayCamera.clearFlags = CameraClearFlags.SolidColor;
+            displayCamera.backgroundColor = Color.black;
+            displayCamera.depth = -100f;
+            displayCamera.targetTexture = null;
+            displayCamera.targetDisplay = 0;
+            displayCamera.useOcclusionCulling = false;
+            displayCamera.allowHDR = false;
+            displayCamera.allowMSAA = false;
+            RecordPrefabInstanceOverride(displayCamera);
+            EditorUtility.SetDirty(displayCamera);
+        }
+
         var controllerAdapter = droneObject.GetComponent<SimulatedDroneFollowControllerAdapter>();
         if (controllerAdapter == null)
             controllerAdapter = Undo.AddComponent<SimulatedDroneFollowControllerAdapter>(droneObject);
