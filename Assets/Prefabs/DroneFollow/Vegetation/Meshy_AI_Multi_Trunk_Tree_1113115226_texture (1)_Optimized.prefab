@@ -1,0 +1,130 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &3585639583009943518
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 470237968677196760}
+  m_Layer: 0
+  m_Name: Meshy_AI_Multi_Trunk_Tree_1113115226_texture (1)_Optimized
+  m_TagString: Obstacle
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &470237968677196760
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3585639583009943518}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 813338629147950034}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1001 &4102131472668784156
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 470237968677196760}
+    m_Modifications:
+    - target: {fileID: 3721167343215709646, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3721167343215709646, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3721167343215709646, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3721167343215709646, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 3721167343215709646, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3721167343215709646, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3721167343215709646, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3721167343215709646, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3721167343215709646, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 3721167343215709646, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 4116351001553139229, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_Name
+      value: Meshy_AI_Multi_Trunk_Tree_1113115226_texture (1)
+      objectReference: {fileID: 0}
+    - target: {fileID: 7150994041668238576, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      propertyPath: m_TagString
+      value: Obstacle
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 7150994041668238576, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 5797596716300788510}
+  m_SourcePrefab: {fileID: 100100000, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+--- !u!4 &813338629147950034 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 3721167343215709646, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+  m_PrefabInstance: {fileID: 4102131472668784156}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &6616031834110069484 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 7150994041668238576, guid: 29c215b31e6d07032bc2af43a420110b, type: 3}
+  m_PrefabInstance: {fileID: 4102131472668784156}
+  m_PrefabAsset: {fileID: 0}
+--- !u!64 &5797596716300788510
+MeshCollider:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 6616031834110069484}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_IsTrigger: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 5
+  m_Convex: 0
+  m_CookingOptions: 30
+  m_Mesh: {fileID: 1050908021570271116, guid: 53ed094c5bd11460ca1e902926998330, type: 3}

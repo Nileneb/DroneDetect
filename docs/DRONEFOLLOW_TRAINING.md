@@ -118,12 +118,13 @@ controlled landing has started.
 
 Connect an Xbox controller, open the training scene with the trainer stopped and select
 **DroneDetect > DroneFollow > Record Manual Demonstration**. The agent switches to `HeuristicOnly`
-and reads the controller through the Input System, Mode 2 like an RC transmitter:
+and reads the controller through the Input System:
 
-| Stick | Up/down | Left/right |
-|---|---|---|
-| Left | climb / descend | yaw left / right |
-| Right | forward / back | sideways |
+| Control | Action |
+|---|---|
+| Left stick | move: forward/back, sideways |
+| Right stick (left/right) | look: yaw |
+| R2 / L2 | climb / descend (analog) |
 
 A 10 % deadzone filters stick drift. Without a controller the keyboard still works (WASD/arrows,
 Space/Left Shift, Q/E), but its commands are only full or zero, which the policy would imitate.
@@ -159,10 +160,13 @@ and requires the PPO trainer to be stopped.
 
 ## Vegetation collision
 
-**DroneDetect > DroneFollow > Optimize Vegetation Prefabs** replaces vegetation instances that use
-MeshColliders with shared prefabs under `Assets/Prefabs/DroneFollow/Vegetation` (visual mesh kept,
-collision reduced to a capsule or box). The terrain builder scatters these prefabs. There is no
-NavMesh anymore; the target walks fixed paths.
+**DroneDetect > DroneFollow > Rebuild Vegetation Prefabs (Mesh Colliders)** regenerates the shared
+prefabs under `Assets/Prefabs/DroneFollow/Vegetation` from `Assets/Prefabs/Vegetation`: every mesh
+gets a non-convex `MeshCollider` on its decimated (~30k triangle) geometry, tagged `Obstacle`, so the
+drone collides with branches and overhangs exactly where they are, like the real drone would. Scene
+instances keep their prefab links and update in place. Hitting `Obstacle`, `Ground` or `Wall` costs
+impact damage. There is no NavMesh anymore; **Configure Active Scene** deletes old NavMesh objects
+and components.
 
 `ProjectSettings/ProjectSettings.asset` enables Unity's collision-mesh
 prebaking for any MeshColliders that remain elsewhere in the project. This is

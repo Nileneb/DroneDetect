@@ -10,6 +10,37 @@ public static class DroneFollowVegetationTools
 {
     const string VegetationRootName = "Vegetation";
     const string PrefabFolder = "Assets/Prefabs/DroneFollow/Vegetation";
+    const string ObstacleTag = "Obstacle";
+    const string SourcePrefabFolder = "Assets/Prefabs/Vegetation";
+
+    /// <summary>Regenerates every optimized vegetation prefab from its source; scene instances keep their links.</summary>
+    [MenuItem("DroneDetect/DroneFollow/Rebuild Vegetation Prefabs (Mesh Colliders)")]
+    public static void RebuildOptimizedPrefabs()
+    {
+        if (EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            Debug.LogError("[DroneFollowVegetation] Stop Play mode before rebuilding vegetation prefabs.");
+            return;
+        }
+
+        EnsurePrefabFolder();
+        int rebuilt = 0;
+        foreach (string guid in AssetDatabase.FindAssets("t:Prefab", new[] { SourcePrefabFolder }))
+        {
+            string sourcePath = AssetDatabase.GUIDToAssetPath(guid);
+            GameObject source = AssetDatabase.LoadAssetAtPath<GameObject>(sourcePath);
+            if (source == null)
+            {
+                Debug.LogError($"[DroneFollowVegetation] Could not load {sourcePath}.");
+                continue;
+            }
+            if (CreateOptimizedPrefab(source, GetOptimizedPrefabPath(sourcePath)) != null)
+                rebuilt++;
+        }
+        AssetDatabase.SaveAssets();
+        Debug.Log($"[DroneFollowVegetation] Rebuilt {rebuilt} vegetation prefabs with mesh colliders in {PrefabFolder}.");
+    }
+
     [MenuItem("DroneDetect/DroneFollow/Optimize Vegetation Prefabs")]
     public static void OptimizeActiveScene()
     {
@@ -149,8 +180,8 @@ public static class DroneFollowVegetationTools
                 return null;
             }
 
-            prefabRoot.tag = "Obstacle";
-            CreateCollisionProxy(prefabRoot.transform, bounds);
+            prefabRoot.tag = ObstacleTag;
+            AddMeshColliders(visual);
 
             GameObject savedPrefab = PrefabUtility.SaveAsPrefabAsset(prefabRoot, outputPath);
             if (savedPrefab == null)
@@ -200,33 +231,20 @@ public static class DroneFollowVegetationTools
         return hasBounds;
     }
 
-    static void CreateCollisionProxy(Transform prefabRoot, Bounds bounds)
+    // WHY(sim-to-real, collision): the real drone hits branches and rock overhangs, not a capsule around the
+    // trunk; the decimated (~30k triangle) meshes are cheap enough to collide against exactly.
+    static void AddMeshColliders(GameObject visual)
     {
-        var proxy = new GameObject("CollisionProxy");
-        proxy.tag = "Obstacle";
-        proxy.transform.SetParent(prefabRoot, false);
-
-        Vector3 size = bounds.size;
-        float horizontalSize = Mathf.Max(size.x, size.z);
-        bool tallObject = size.y >= horizontalSize * 1.2f;
-        if (tallObject)
+        foreach (MeshFilter meshFilter in visual.GetComponentsInChildren<MeshFilter>(true))
         {
-            float radius = Mathf.Clamp(horizontalSize * 0.1f, 0.15f, 0.6f);
-            float height = Mathf.Max(size.y * 0.92f, radius * 2f);
-            var collider = proxy.AddComponent<CapsuleCollider>();
-            collider.direction = 1;
-            collider.radius = radius;
-            collider.height = height;
-            collider.center = new Vector3(bounds.center.x, bounds.min.y + height * 0.5f, bounds.center.z);
-        }
-        else
-        {
-            var collider = proxy.AddComponent<BoxCollider>();
-            collider.center = bounds.center;
-            collider.size = new Vector3(
-                Mathf.Max(size.x, 0.2f),
-                Mathf.Max(size.y, 0.2f),
-                Mathf.Max(size.z, 0.2f));
+            if (meshFilter.sharedMesh == null)
+                continue;
+            MeshCollider meshCollider = meshFilter.GetComponent<MeshCollider>();
+            if (meshCollider == null)
+                meshCollider = meshFilter.gameObject.AddComponent<MeshCollider>();
+            meshCollider.sharedMesh = meshFilter.sharedMesh;
+            meshCollider.convex = false;
+            meshFilter.gameObject.tag = ObstacleTag;
         }
     }
 

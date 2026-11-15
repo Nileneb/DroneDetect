@@ -84,6 +84,7 @@ public static class DroneFollowSetup
         Camera camera = mainCamera;
 
         Scene trainingScene = droneObject.scene;
+        int removedNavMeshParts = RemoveNavMeshLeftovers(trainingScene);
         int removedMissingScripts = RemoveMissingScriptsInScene(trainingScene);
         int remainingMissingScripts = CountMissingScriptsInScene(trainingScene);
         if (remainingMissingScripts > 0)
@@ -376,7 +377,7 @@ public static class DroneFollowSetup
         EditorSceneManager.SaveOpenScenes();
         Selection.activeGameObject = droneObject;
 
-        Debug.Log($"[DroneFollowSetup] Agent1 configured: perception on '{mainCamera.name}' is assigned to DroneFollowAgent and writes to its grayscale depth sensor; {DroneFollowContract.ObservationSize} vector observations + {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight} image, {DroneFollowContract.ActionSize} continuous actions, {paths.Length} paths, {actualRateHz:F1} Hz; removed {removedCameraSensors} CameraSensorComponent(s) and {removedMissingScripts} missing script(s).");
+        Debug.Log($"[DroneFollowSetup] Agent1 configured: perception on '{mainCamera.name}' is assigned to DroneFollowAgent and writes to its grayscale depth sensor; {DroneFollowContract.ObservationSize} vector observations + {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight} image, {DroneFollowContract.ActionSize} continuous actions, {paths.Length} paths, {actualRateHz:F1} Hz; removed {removedCameraSensors} CameraSensorComponent(s), {removedMissingScripts} missing script(s) and {removedNavMeshParts} NavMesh leftover(s).");
         return true;
     }
 
@@ -755,6 +756,36 @@ public static class DroneFollowSetup
             }
         }
 
+        return removed;
+    }
+
+    /// <summary>
+    /// Deletes the old NavMesh surface object and every navigation component; the target walks fixed
+    /// paths now. Matched by namespace so this keeps compiling without the AI Navigation package.
+    /// </summary>
+    static int RemoveNavMeshLeftovers(Scene scene)
+    {
+        int removed = 0;
+        foreach (GameObject root in scene.GetRootGameObjects())
+        {
+            if (root.name == "DroneFollowNavMesh")
+            {
+                Undo.DestroyObjectImmediate(root);
+                removed++;
+                continue;
+            }
+
+            foreach (Component component in root.GetComponentsInChildren<Component>(true))
+            {
+                if (component == null)
+                    continue;
+                string ns = component.GetType().Namespace ?? string.Empty;
+                if (ns != "Unity.AI.Navigation" && ns != "UnityEngine.AI")
+                    continue;
+                Undo.DestroyObjectImmediate(component);
+                removed++;
+            }
+        }
         return removed;
     }
 

@@ -50,6 +50,8 @@ public sealed class DroneFollowAgent : Agent
     [Header("Crash damage")]
     public string groundTag = "Ground";
     public string wallTag = "Wall";
+    [Tooltip("Rocks and trees scattered on the terrain.")]
+    public string obstacleTag = "Obstacle";
     [Min(0f)] public float safeImpactSpeed = 0.5f;
     [Min(0.1f)] public float severeImpactSpeed = 4f;
     [Range(0f, 1f)] public float maxDamagePerImpact = 0.25f;
@@ -585,18 +587,18 @@ public sealed class DroneFollowAgent : Agent
             return;
         }
 
-        // WHY(demo quality): analog sticks give graded commands; keyboard keys are only -1/0/+1 and the policy
-        // imitates that bang-bang flying. Mode 2 like an RC transmitter: left stick = climb + yaw,
-        // right stick = forward + sideways.
+        // WHY(demo quality): analog sticks and triggers give graded commands; keyboard keys are only -1/0/+1
+        // and the policy imitates that bang-bang flying. Game-style layout: left stick = move, right stick
+        // = look (yaw), R2 = climb, L2 = descend.
         Gamepad pad = Gamepad.current;
         if (pad != null)
         {
-            Vector2 left = Deadzone(pad.leftStick.ReadValue());
-            Vector2 right = Deadzone(pad.rightStick.ReadValue());
-            ca[0] = right.y;
-            ca[1] = -right.x;
-            ca[2] = left.y;
-            ca[3] = left.x;
+            Vector2 move = Deadzone(pad.leftStick.ReadValue());
+            Vector2 look = Deadzone(pad.rightStick.ReadValue());
+            ca[0] = move.y;
+            ca[1] = -move.x;
+            ca[2] = pad.rightTrigger.ReadValue() - pad.leftTrigger.ReadValue();
+            ca[3] = look.x;
             return;
         }
 
@@ -656,7 +658,8 @@ public sealed class DroneFollowAgent : Agent
 
         bool isGround = !string.IsNullOrEmpty(groundTag) && collision.gameObject.CompareTag(groundTag);
         bool isWall = !string.IsNullOrEmpty(wallTag) && collision.gameObject.CompareTag(wallTag);
-        if (!isGround && !isWall) return;
+        bool isObstacle = !string.IsNullOrEmpty(obstacleTag) && collision.gameObject.CompareTag(obstacleTag);
+        if (!isGround && !isWall && !isObstacle) return;
 
         ApplyImpactDamage(collision.relativeVelocity.magnitude, collision.gameObject.name);
     }

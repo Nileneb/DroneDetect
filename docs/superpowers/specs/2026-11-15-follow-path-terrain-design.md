@@ -73,6 +73,8 @@ So the training scene changes to:
 - New Unity Terrain (built with the Terrain tool) replacing the flat ground plane in the training
   scene: rolling hills, larger than the current area. Tagged `Ground` (crash detection uses the
   tag).
+- Rocks/trees collide with their real (decimated) meshes via non-convex MeshColliders tagged
+  `Obstacle`, not proxy boxes (user's choice: the real drone has no boxes around objects).
 - Scatter many more rocks/trees from the existing decimated Meshy prefabs in
   `Assets/Environment/{RocksGLB,TreesGLB}`. Reuse/extend `DroneFollowVegetationTools`; its NavMesh
   bake becomes obsolete and is removed.
@@ -159,9 +161,9 @@ smoothness, crash damage). Changes:
 
 ### Manual demos with Xbox controller
 
-- `Heuristic()` reads analog sticks from an Xbox controller (Input System `Gamepad`), Mode-2 layout like an RC
-  transmitter: left stick = up/down (vertical) + yaw (horizontal); right stick = forward/back +
-  left/right. Small deadzone. Keyboard stays as fallback.
+- `Heuristic()` reads an Xbox controller (Input System `Gamepad`): left stick = move (forward/back,
+  sideways), right stick = look (yaw), R2/L2 = climb/descend (user's choice after trying Mode 2).
+  Small deadzone. Keyboard stays as fallback.
 - The scripted expert stays available but is no longer the default demo source; config
   `DroneFollow.yaml` demo paths point to the user's recordings.
 - The target walks its fixed path during recording exactly as in training.

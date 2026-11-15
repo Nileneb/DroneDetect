@@ -99,7 +99,7 @@ public static class DroneFollowDemoTools
         SessionState.SetBool(PendingKey, true);
         Debug.Log(scriptedExpert
             ? $"[DroneFollowDemo] Starting scripted-expert recording. Stop Play mode to publish it as '{DemoName}.demo' in '{DemoDirectory}'."
-            : $"[DroneFollowDemo] Starting manual recording. Gamepad (Mode 2): left stick = climb/yaw, right stick = forward/sideways; keyboard fallback WASD, Space/Shift, Q/E. The sim lands after the target is home and starts the next path. Stop Play mode to keep the recording in '{ManualDemoDirectory}'.");
+            : $"[DroneFollowDemo] Starting manual recording. Gamepad: left stick = move, right stick = look (yaw), R2/L2 = climb/descend; keyboard fallback WASD, Space/Shift, Q/E. The sim lands after the target is home and starts the next path. Stop Play mode to keep the recording in '{ManualDemoDirectory}'.");
         EditorApplication.isPlaying = true;
     }
 
