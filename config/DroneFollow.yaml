@@ -81,6 +81,11 @@ environment_parameters:
       - name: LongFlight
         value: 4
 
+# WHY(training-speed): on the default CPU device the Python trainer saturated one core (policy forward per
+# step plus CNN/BC/GAIL updates) and capped the editor at ~0.7x real time.
+torch_settings:
+  device: cuda
+
 env_settings:
   base_port: 5004
 
