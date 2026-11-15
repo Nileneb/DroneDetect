@@ -35,7 +35,7 @@ Checkpoints (`.onnx` + `.pt`) are written every 25k steps to
 | | |
 |---|---|
 | Observations | 10 flight-state values (altitude, body velocity, roll/pitch, heading relative to takeoff, attitude rates), 4 YOLO box values, 4 previous actions, 1 damage, 84×84 MiDaS depth |
-| Actions | `forward, left, up, turn` in [-1, 1] + discrete land |
+| Actions | `forward, left, up, turn` in [-1, 1] (landing: operator / sim after the walk) |
 | Curriculum | `follow_stage` 0–4: target speed, roam radius and flight length grow with reward |
 | Sim-to-real | AR.Drone camera FOV/orientation, 50–250 ms detection latency, 8 % detection dropout, box jitter, randomized motor response, random start heading |
 | Speed | `time_scale: 4` (15 rendered frames per simulated second) |

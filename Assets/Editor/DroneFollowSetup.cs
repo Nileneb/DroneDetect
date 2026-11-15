@@ -294,17 +294,22 @@ public static class DroneFollowSetup
 
         ConfigureBoundingBoxOverlay(trainingScene, sentisPerception, mainCameraContent);
 
-        var targetMotion = target.GetComponent<SimulatedMovingTarget>();
+        DroneFollowPath[] paths = DroneFollowTerrainBuilder.FindPaths();
+        Transform pad = DroneFollowTerrainBuilder.FindPad();
+        if (paths.Length == 0 || pad == null)
+        {
+            Debug.LogError("[DroneFollowSetup] No DroneFollow paths or landing pad in the scene. Run DroneDetect > DroneFollow > Build Terrain, Paths and Gates first.");
+            return false;
+        }
+
+        var targetMotion = target.GetComponent<DroneFollowPathWalker>();
         if (targetMotion == null)
-            targetMotion = Undo.AddComponent<SimulatedMovingTarget>(target.gameObject);
-        Undo.RecordObject(targetMotion, "Configure moving target");
-        targetMotion.roamRadius = 12f;
-        targetMotion.minSpeed = 0.75f;
-        targetMotion.maxSpeed = 2f;
-        targetMotion.stopProbability = 0.05f;
-        targetMotion.minStopSeconds = 0.2f;
-        targetMotion.maxStopSeconds = 0.8f;
+            targetMotion = Undo.AddComponent<DroneFollowPathWalker>(target.gameObject);
         RecordPrefabInstanceOverride(targetMotion);
+        Undo.RecordObject(target, "Place target at the first waypoint");
+        target.position = paths[0].Waypoints[0];
+        RecordPrefabInstanceOverride(target);
+        PlaceDroneOnPad(droneObject, pad, target.position);
 
         var followAgent = droneObject.GetComponent<DroneFollowAgent>();
         if (followAgent == null)
@@ -315,7 +320,7 @@ public static class DroneFollowSetup
         followAgent.desiredAltitude = 1.5f;
         followAgent.desiredDistanceMin = 2f;
         followAgent.desiredDistanceMax = 3f;
-        followAgent.safeLandingMinimumFlightFraction = 1f;
+        followAgent.paths = paths;
         followAgent.enabled = true;
         RecordPrefabInstanceOverride(followAgent);
 
@@ -346,9 +351,7 @@ public static class DroneFollowSetup
         var brainParameters = behavior.BrainParameters;
         brainParameters.VectorObservationSize = DroneFollowContract.ObservationSize;
         brainParameters.NumStackedVectorObservations = 1;
-        brainParameters.ActionSpec = new ActionSpec(
-            DroneFollowContract.ActionSize,
-            new[] { DroneFollowContract.DiscreteActionCount });
+        brainParameters.ActionSpec = ActionSpec.MakeContinuous(DroneFollowContract.ActionSize);
         RecordPrefabInstanceOverride(behavior);
 
         var requester = droneObject.GetComponent<DecisionRequester>();
@@ -373,8 +376,22 @@ public static class DroneFollowSetup
         EditorSceneManager.SaveOpenScenes();
         Selection.activeGameObject = droneObject;
 
-        Debug.Log($"[DroneFollowSetup] Agent1 configured: perception on '{mainCamera.name}' is assigned to DroneFollowAgent and writes to its grayscale depth sensor; {DroneFollowContract.ObservationSize} vector observations + {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight} image, {DroneFollowContract.ActionSize} continuous actions + {DroneFollowContract.DiscreteBranchSize} discrete branch, {actualRateHz:F1} Hz; removed {removedCameraSensors} CameraSensorComponent(s) and {removedMissingScripts} missing script(s).");
+        Debug.Log($"[DroneFollowSetup] Agent1 configured: perception on '{mainCamera.name}' is assigned to DroneFollowAgent and writes to its grayscale depth sensor; {DroneFollowContract.ObservationSize} vector observations + {DroneFollowContract.DepthObservationWidth}x{DroneFollowContract.DepthObservationHeight} image, {DroneFollowContract.ActionSize} continuous actions, {paths.Length} paths, {actualRateHz:F1} Hz; removed {removedCameraSensors} CameraSensorComponent(s) and {removedMissingScripts} missing script(s).");
         return true;
+    }
+
+    /// <summary>Puts the drone on top of the landing pad, facing the target's start.</summary>
+    static void PlaceDroneOnPad(GameObject droneObject, Transform pad, Vector3 lookAt)
+    {
+        Transform drone = droneObject.transform;
+        Collider droneCollider = droneObject.GetComponent<Collider>();
+        float originAboveBottom = droneCollider != null ? drone.position.y - droneCollider.bounds.min.y : 0.05f;
+        float padTop = pad.GetComponent<Collider>().bounds.max.y;
+        Vector3 position = new Vector3(pad.position.x, padTop + originAboveBottom + 0.02f, pad.position.z);
+        Vector3 heading = Vector3.ProjectOnPlane(lookAt - position, Vector3.up);
+        Undo.RecordObject(drone, "Place drone on landing pad");
+        drone.SetPositionAndRotation(position, heading.sqrMagnitude > 0.01f ? Quaternion.LookRotation(heading) : drone.rotation);
+        RecordPrefabInstanceOverride(drone);
     }
 
     /// <summary>

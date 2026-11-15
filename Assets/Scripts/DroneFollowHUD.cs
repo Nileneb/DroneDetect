@@ -6,16 +6,10 @@ public sealed class DroneFollowHUD : MonoBehaviour
 {
     static readonly string[] StageNames =
     {
-        "Stabiles Ziel im Nahbereich",
-        "Sanfte Zielbewegung",
-        "Moderate Bewegung + Detektionsrauschen",
-        "Volle Bewegung + Detektionsrauschen",
-        "Langflug (240 s)"
-    };
-
-    static readonly float[] StageDurations =
-    {
-        60f, 90f, 120f, 180f, 240f
+        "Flacher Pfad, langsames Ziel",
+        "Leichte Huegel",
+        "Huegel + engere Kurven",
+        "Voller Parcours, schnelleres Ziel"
     };
 
     const string MonitorCanvasName = "DroneFollowMainCameraCanvas";
@@ -27,7 +21,7 @@ public sealed class DroneFollowHUD : MonoBehaviour
     Text _flightText;
     Text _alignmentText;
     Text _detectionText;
-    readonly Text[] _stageRows = new Text[5];
+    readonly Text[] _stageRows = new Text[DroneFollowContract.CurriculumStages];
 
     public static DroneFollowHUD CreateHUD(DroneFollowAgent agent)
     {
@@ -85,9 +79,6 @@ public sealed class DroneFollowHUD : MonoBehaviour
         int currentStage = Mathf.Clamp(_agent.CurrentCurriculumStage, 0, StageNames.Length - 1);
         int elapsedSeconds = Mathf.FloorToInt(
             _agent.CurrentEpisodeFlightDecisions / DroneFollowContract.DecisionRateHz);
-        int durationSeconds = _agent.CurrentEpisodeDecisionLimit > 0
-            ? Mathf.RoundToInt(_agent.CurrentEpisodeDecisionLimit / DroneFollowContract.DecisionRateHz)
-            : Mathf.RoundToInt(StageDurations[currentStage]);
 
         bool finalChallengeCompleted = _agent.FinalCurriculumStageCompleted;
         _stageText.text = finalChallengeCompleted
@@ -98,7 +89,7 @@ public sealed class DroneFollowHUD : MonoBehaviour
             : $"Aktuell: {StageNames[currentStage]}";
         _flightText.text = finalChallengeCompleted
             ? "Letzte Flugzeit erfolgreich absolviert"
-            : $"Flugzeit: {FormatTime(elapsedSeconds)} / {FormatTime(durationSeconds)}";
+            : $"Flugzeit: {FormatTime(elapsedSeconds)}  |  Tore: {_agent.GatesPassedWell}/{_agent.GateCount}";
         _alignmentText.text = $"Ziel im Fadenkreuz: {_agent.TargetCenteringQuality:P0}";
         DroneFollowSentisPerception perception = _agent.perception;
         if (perception == null)

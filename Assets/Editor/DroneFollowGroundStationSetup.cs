@@ -81,9 +81,7 @@ public static class DroneFollowGroundStationSetup
         BrainParameters brain = behavior.BrainParameters;
         brain.VectorObservationSize = DroneFollowContract.ObservationSize;
         brain.NumStackedVectorObservations = 1;
-        brain.ActionSpec = new ActionSpec(
-            DroneFollowContract.ActionSize,
-            new[] { DroneFollowContract.DiscreteActionCount });
+        brain.ActionSpec = ActionSpec.MakeContinuous(DroneFollowContract.ActionSize);
 
         // The sensor name and settings must match the training scene, or the policy rejects the observation.
         var depthSensor = station.AddComponent<RenderTextureSensorComponent>();

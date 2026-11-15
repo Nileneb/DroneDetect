@@ -1,13 +1,13 @@
-# DroneFollow PPO, warm-started by behavioral cloning and GAIL from scripted-expert demonstrations
-# (DroneDetect > DroneFollow > Record Scripted Expert Demonstration). The expert uses ground truth only
-# to choose its actions; the recorded observations are exactly what the policy sees.
-# Policy inputs: 19 vector observations + 84x84 grayscale MiDaS depth;
-# outputs: four continuous actions and one discrete (land) branch.
+# DroneFollow PPO, warm-started by behavioral cloning and GAIL from manual Xbox-controller flights
+# (DroneDetect > DroneFollow > Record Manual Demonstration); every .demo file in
+# results/demonstrations/manual is loaded. The target walks fixed loops on the terrain.
+# Policy inputs: 19 vector observations + 84x84 grayscale MiDaS depth; outputs: four continuous actions.
+# Landing is not a policy action: the sim lands after the walk, the operator lands the real drone.
 behaviors:
   DroneFollow:
     trainer_type: ppo
     behavioral_cloning:
-      demo_path: results/demonstrations/DroneFollowDemo.demo
+      demo_path: results/demonstrations/manual
       strength: 1.0
       steps: 150000
       batch_size: 128
@@ -17,7 +17,7 @@ behaviors:
         gamma: 0.995
         strength: 1.0
       gail:
-        demo_path: results/demonstrations/DroneFollowDemo.demo
+        demo_path: results/demonstrations/manual
         strength: 0.3
         gamma: 0.99
         encoding_size: 128
@@ -44,42 +44,38 @@ behaviors:
     checkpoint_interval: 25000
 
 environment_parameters:
+  # Path difficulty: an episode picks a loop whose DroneFollowPath.difficulty <= follow_stage.
+  # WHY(reward scale): thresholds are mean episode returns. A clean ~3 min loop earns roughly
+  # 2000 decisions x ~0.04 shaping + ~15 gates x 0.5 + 0.75 completion = ~85; losing the person
+  # half the time lands near ~35. Re-check against TensorBoard after the first run.
   follow_stage:
     curriculum:
-      - name: StableCloseTarget
+      - name: FlatPathSlowTarget
         completion_criteria:
           measure: reward
           behavior: DroneFollow
           signal_smoothing: true
-          min_lesson_length: 50
-          threshold: 1.5
+          min_lesson_length: 100
+          threshold: 40.0
         value: 0
-      - name: GentleTargetMotion
+      - name: GentleHills
         completion_criteria:
           measure: reward
           behavior: DroneFollow
           signal_smoothing: true
-          min_lesson_length: 50
-          threshold: 3.0
+          min_lesson_length: 100
+          threshold: 45.0
         value: 1
-      - name: ModerateTargetMotion
+      - name: HillsTightTurns
         completion_criteria:
           measure: reward
           behavior: DroneFollow
           signal_smoothing: true
-          min_lesson_length: 50
-          threshold: 4.5
+          min_lesson_length: 100
+          threshold: 50.0
         value: 2
-      - name: FullTargetMotion
-        completion_criteria:
-          measure: reward
-          behavior: DroneFollow
-          signal_smoothing: true
-          min_lesson_length: 50
-          threshold: 6.5
+      - name: FullCourseFasterTarget
         value: 3
-      - name: LongFlight
-        value: 4
 
 # WHY(training-speed): on the default CPU device the Python trainer saturated one core (policy forward per
 # step plus CNN/BC/GAIL updates) and capped the editor at ~0.7x real time.

@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.InputSystem;
 using Unity.MLAgents;
 using Unity.MLAgents.Actuators;
 using Unity.MLAgents.Sensors;
@@ -7,6 +8,8 @@ using Unity.MLAgents.Sensors;
 /// DroneFollow policy: vector state plus the attached grayscale depth sensor.
 /// CollectObservations supplies flight state, detector box, previous commands,
 /// and damage; ground truth is used only for training reward shaping.
+/// Training: the target walks a fixed <see cref="DroneFollowPath"/> loop from the pad and back; the drone
+/// earns gate rewards on the way and is landed automatically once the target is home.
 /// In deployment mode (real drone) episodes never end, the operator owns
 /// takeoff/landing, and no ground truth or rewards are used.
 /// </summary>
@@ -15,7 +18,7 @@ public sealed class DroneFollowAgent : Agent
     public DroneFollowSentisPerception perception;
     [Tooltip("Real-drone operation: no episode limit, no rewards, takeoff/landing stay with the operator.")]
     public bool deploymentMode;
-    [Tooltip("Demo recording only: Heuristic() flies a ground-truth follow controller instead of reading the keyboard.")]
+    [Tooltip("Demo recording only: Heuristic() flies a ground-truth follow controller instead of reading the gamepad.")]
     public bool useScriptedExpert;
 
     [Header("Follow task")]
@@ -30,11 +33,19 @@ public sealed class DroneFollowAgent : Agent
     [Min(0f)] public float followHoldReward = 0.015f;
     [Min(0f)] public float lostDetectionPenalty = 0.005f;
     [Min(0f)] public float smoothActionPenalty = 0.0005f;
+    [Tooltip("Paid on touchdown after the target walked its whole loop, scaled by the share of gates passed well.")]
     [Min(0f)] public float flightCompletionReward = 0.75f;
-    [Range(0f, 1f)] public float safeLandingMinimumFlightFraction = 1f;
     [Tooltip("Training resets yaw the drone randomly by up to this angle so the target does not always start centered.")]
     [Range(0f, 90f)] public float spawnYawJitterDegrees = 30f;
-    [Min(0f)] public float earlyLandingPenalty = 0.02f;
+
+    [Header("Paths and gates")]
+    [Tooltip("Walking loops; an episode picks one whose difficulty is at most the curriculum stage.")]
+    public DroneFollowPath[] paths;
+    [Tooltip("Largest single reward: passing the next gate with the person in view at follow distance.")]
+    [Min(0f)] public float gateReward = 0.5f;
+    public Vector2 walkSpeedRange = new Vector2(0.6f, 1.2f);
+    [Tooltip("Seconds the drone keeps following the standing target before the sim lands it.")]
+    [Min(0f)] public float hoverAfterTargetStopsSeconds = 3f;
 
     [Header("Crash damage")]
     public string groundTag = "Ground";
@@ -48,7 +59,6 @@ public sealed class DroneFollowAgent : Agent
     [Min(0f)] public float terminalCrashPenalty = 2.5f;
     [Range(0f, 1f)] public float minimumControlAuthority = 0.4f;
     [Min(0f)] public float impactCooldownSeconds = 0.5f;
-    [Min(0f)] public float safeLandingReward = 0.5f;
 
     IDroneController _controller;
     IDroneTargetDetectionSource _detector;
@@ -78,9 +88,22 @@ public sealed class DroneFollowAgent : Agent
     bool _hasHeadingReference;
     float _headingReferenceDeg;
 
+    const int VisibilityWindowDecisions = 10;
+    readonly bool[] _visibleHistory = new bool[VisibilityWindowDecisions];
+    int _visibleHistoryIndex;
+    DroneFollowPathWalker _walker;
+    DroneFollowPath _activePath;
+    int[] _visitOrder;
+    int _nextGateStep;
+    int _gatesPassedWell;
+    int _gateCount;
+    float _targetFinishedTime = -1f;
+
     public int CurrentCurriculumStage => _curriculumStage;
     public int CurrentEpisodeFlightDecisions => _episodeFlightDecisions;
     public int CurrentEpisodeDecisionLimit => _episodeDecisionLimit;
+    public int GatesPassedWell => _gatesPassedWell;
+    public int GateCount => _gateCount;
     public bool FinalCurriculumStageCompleted => _finalCurriculumStageCompleted;
     public float TargetCenteringQuality
     {
@@ -127,6 +150,14 @@ public sealed class DroneFollowAgent : Agent
             Debug.LogError("[DroneFollowAgent] No target detection source is attached.", this);
         if (followTarget == null && !deploymentMode)
             Debug.LogError("[DroneFollowAgent] Follow target is not assigned.", this);
+        if (!deploymentMode && followTarget != null)
+        {
+            _walker = followTarget.GetComponent<DroneFollowPathWalker>();
+            if (_walker == null)
+                Debug.LogError("[DroneFollowAgent] The follow target has no DroneFollowPathWalker. Re-run DroneDetect > Configure Active Scene for DroneFollow.", this);
+            if (paths == null || paths.Length == 0)
+                Debug.LogError("[DroneFollowAgent] No DroneFollowPath assigned. Run DroneDetect > DroneFollow > Build Terrain, Paths and Gates, then Configure Active Scene.", this);
+        }
 
         RenderTextureSensorComponent depthSensor = GetComponent<RenderTextureSensorComponent>();
         if (_perception == null)
@@ -171,34 +202,51 @@ public sealed class DroneFollowAgent : Agent
         if (deploymentMode)
             return;
 
-        // Expert demos cover every curriculum stage so behavioral cloning sees fast targets too.
+        // Expert demos cover every curriculum stage so behavioral cloning sees the hard paths too.
         _curriculumStage = useScriptedExpert
-            ? Random.Range(0, 5)
+            ? Random.Range(0, DroneFollowContract.CurriculumStages)
             : Mathf.Clamp(
                 Mathf.RoundToInt(Academy.Instance.EnvironmentParameters.GetWithDefault("follow_stage", 0f)),
-                0, 4);
+                0, DroneFollowContract.CurriculumStages - 1);
         _expertPreviousDistance = -1f;
-        float[] flightDurationsSeconds = { 60f, 90f, 120f, 180f, 240f };
-        _episodeDecisionLimit = Mathf.RoundToInt(
-            flightDurationsSeconds[_curriculumStage] * DroneFollowContract.DecisionRateHz);
+        System.Array.Clear(_visibleHistory, 0, _visibleHistory.Length);
+        _visibleHistoryIndex = 0;
+        _nextGateStep = 0;
+        _gatesPassedWell = 0;
+        _targetFinishedTime = -1f;
 
-        DroneFollowDemoRoute demoRoute = followTarget != null
-            ? followTarget.GetComponent<DroneFollowDemoRoute>()
-            : null;
-        if (followTarget != null && (demoRoute == null || !demoRoute.enabled))
+        _activePath = PickPath(_curriculumStage);
+        if (_activePath == null || _walker == null)
         {
-            var targetMotion = followTarget.GetComponent<SimulatedMovingTarget>();
-            if (targetMotion != null)
-            {
-                targetMotion.ApplyCurriculumDifficulty(_curriculumStage);
-                targetMotion.ResetEpisode();
-            }
+            Debug.LogError($"[DroneFollowAgent] Cannot start stage {_curriculumStage}: no eligible path or no walker on the target.", this);
+            _episodeDecisionLimit = 0;
+            _gateCount = 0;
+            return;
         }
+
+        bool reverse = Random.value < 0.5f;
+        float stageProgress = _curriculumStage / (float)(DroneFollowContract.CurriculumStages - 1);
+        float maxSpeed = Mathf.Lerp(Mathf.Lerp(walkSpeedRange.x, walkSpeedRange.y, 0.5f), walkSpeedRange.y, stageProgress);
+        float speed = Random.Range(walkSpeedRange.x, maxSpeed);
+        foreach (DroneFollowPath path in paths)
+            if (path != null)
+                path.SetGatesActive(path == _activePath);
+        _walker.Begin(_activePath, reverse, speed);
+        _visitOrder = _activePath.VisitOrder(reverse);
+        _gateCount = Mathf.Max(0, _visitOrder.Length - 2);
+
+        // WHY(spec, episode length): the episode follows the walk, not a fixed clock; this limit is only a
+        // safety stop (pauses, landing, margin) in case the drone never lands.
+        float walkSeconds = _activePath.Length / speed;
+        _episodeDecisionLimit = Mathf.CeilToInt(
+            (walkSeconds + 20f + hoverAfterTargetStopsSeconds) * 1.3f * DroneFollowContract.DecisionRateHz);
 
         if (_controller is SimulatedDroneController simulated)
         {
+            Vector3 toTarget = Vector3.ProjectOnPlane(followTarget.position - _spawnPosition, Vector3.up);
+            Quaternion facing = toTarget.sqrMagnitude > 0.01f ? Quaternion.LookRotation(toTarget) : _spawnRotation;
             Quaternion spawnYaw = Quaternion.Euler(0f, Random.Range(-spawnYawJitterDegrees, spawnYawJitterDegrees), 0f);
-            simulated.ResetAndTakeoff(_spawnPosition, spawnYaw * _spawnRotation);
+            simulated.ResetAndTakeoff(_spawnPosition, spawnYaw * facing);
         }
         else if (_controller != null && _controller.State == DroneState.Landed)
             _controller.Takeoff();
@@ -208,7 +256,7 @@ public sealed class DroneFollowAgent : Agent
             $"{(_controller != null ? _controller.GetType().Name : "missing")}, " +
             $"state={stateBeforeReset}->{(_controller != null ? _controller.State : DroneState.Emergency)}, " +
             $"position={transform.position}, episodeDecisionLimit={_episodeDecisionLimit}, " +
-            $"stage={_curriculumStage}.",
+            $"stage={_curriculumStage}, path={(_activePath != null ? _activePath.name : "none")}, gates={_gateCount}.",
             this);
     }
 
@@ -302,11 +350,11 @@ public sealed class DroneFollowAgent : Agent
     {
         if (_ending || _controller == null) return;
         if (actions.ContinuousActions.Length != DroneFollowContract.ActionSize ||
-            actions.DiscreteActions.Length != DroneFollowContract.DiscreteBranchSize)
+            actions.DiscreteActions.Length != 0)
         {
             if (!_actionSizeWarningLogged)
             {
-                Debug.LogError($"[DroneFollowAgent] Expected {DroneFollowContract.ActionSize} continuous actions and {DroneFollowContract.DiscreteBranchSize} discrete branch, got {actions.ContinuousActions.Length} and {actions.DiscreteActions.Length}. Re-run DroneDetect > Configure Active Scene for DroneFollow.", this);
+                Debug.LogError($"[DroneFollowAgent] Expected {DroneFollowContract.ActionSize} continuous and no discrete actions, got {actions.ContinuousActions.Length} and {actions.DiscreteActions.Length}. Re-run DroneDetect > Configure Active Scene for DroneFollow.", this);
                 _actionSizeWarningLogged = true;
             }
             return;
@@ -320,7 +368,7 @@ public sealed class DroneFollowAgent : Agent
                 $"[DroneFollowAgent] Action received: state={_controller.State}, " +
                 $"continuous=({diagnosticActions[0]:F2}, {diagnosticActions[1]:F2}, " +
                 $"{diagnosticActions[2]:F2}, {diagnosticActions[3]:F2}), " +
-                $"land={actions.DiscreteActions[0]}, position={transform.position}.",
+                $"gates={_gatesPassedWell}/{_gateCount}, position={transform.position}.",
                 this);
         }
 
@@ -333,7 +381,7 @@ public sealed class DroneFollowAgent : Agent
         if (_controller.State == DroneState.Landed)
         {
             if (_landingRequested)
-                FinishSafeLanding();
+                FinishLanding();
             else
             {
                 _controller.Takeoff();
@@ -346,21 +394,6 @@ public sealed class DroneFollowAgent : Agent
             return;
 
         _episodeFlightDecisions++;
-        if (actions.DiscreteActions[0] == DroneFollowContract.LandAction)
-        {
-            int minimumFlightDecisions = Mathf.CeilToInt(
-                _episodeDecisionLimit * safeLandingMinimumFlightFraction);
-            if (_episodeFlightDecisions < minimumFlightDecisions)
-            {
-                AddReward(-earlyLandingPenalty);
-                return;
-            }
-
-            _controller.Land();
-            _landingRequested = true;
-            _previousAction = Vector4.zero;
-            return;
-        }
 
         Vector4 previousAction = _previousAction;
         var ca = actions.ContinuousActions;
@@ -383,14 +416,85 @@ public sealed class DroneFollowAgent : Agent
 
         _flightHasStarted = true;
         AddFollowRewards(previousAction, _previousAction);
+        if (_ending)
+            return;
+
+        if (_walker != null && _walker.Finished)
+        {
+            if (_targetFinishedTime < 0f)
+                _targetFinishedTime = Time.time;
+            else if (Time.time - _targetFinishedTime >= hoverAfterTargetStopsSeconds)
+            {
+                _controller.Land();
+                _landingRequested = true;
+                _previousAction = Vector4.zero;
+                return;
+            }
+        }
+
         if (_episodeFlightDecisions >= _episodeDecisionLimit)
         {
+            Debug.LogWarning($"[DroneFollowAgent] Safety timeout after {_episodeFlightDecisions} decisions; target finished={_walker != null && _walker.Finished}.", this);
             _ending = true;
-            if (_curriculumStage == 4)
-                _finalCurriculumStageCompleted = true;
-            AddReward(flightCompletionReward * Mathf.Lerp(1f, 0.5f, _damage));
             EndEpisode();
         }
+    }
+
+    DroneFollowPath PickPath(int stage)
+    {
+        if (paths == null)
+            return null;
+        int eligible = 0;
+        DroneFollowPath chosen = null;
+        foreach (DroneFollowPath path in paths)
+        {
+            if (path == null || path.difficulty > stage || path.Waypoints.Count < 2)
+                continue;
+            eligible++;
+            if (Random.Range(0, eligible) == 0)
+                chosen = path;
+        }
+        return chosen;
+    }
+
+    float VisibleFraction
+    {
+        get
+        {
+            int visible = 0;
+            foreach (bool sample in _visibleHistory)
+                if (sample) visible++;
+            return visible / (float)_visibleHistory.Length;
+        }
+    }
+
+    /// <summary>Called by a gate trigger; only gates the target has already walked through count, in order.</summary>
+    public void OnGateEntered(DroneFollowGate gate)
+    {
+        if (deploymentMode || _ending || _landingRequested || _activePath == null || gate.path != _activePath ||
+            _visitOrder == null || _walker == null)
+            return;
+
+        // Gate steps are visit-order positions 1.._gateCount; a later gate may be taken (skipped ones earn
+        // nothing), an earlier one is ignored. The target must already have reached it: the drone trails.
+        int matchedStep = -1;
+        for (int step = _nextGateStep; step < _gateCount; step++)
+            if (_visitOrder[step + 1] == gate.waypointIndex)
+            {
+                matchedStep = step;
+                break;
+            }
+        if (matchedStep < 0 || _walker.StepsReached < matchedStep + 1)
+            return;
+
+        _nextGateStep = matchedStep + 1;
+        DroneTargetDetection detection = _detector != null ? _detector.Current : DroneTargetDetection.None(Time.time);
+        float distance = Vector3.Distance(transform.position, followTarget.position);
+        float value = DroneFollowRewards.GateReward(
+            VisibleFraction, detection.Visible, distance, desiredDistanceMin, desiredDistanceMax);
+        if (value > 0f)
+            _gatesPassedWell++;
+        AddReward(gateReward * value);
     }
 
     void ApplyDeploymentAction(ActionSegment<float> ca)
@@ -420,9 +524,7 @@ public sealed class DroneFollowAgent : Agent
         if (followTarget != null)
         {
             float distance = Vector3.Distance(transform.position, followTarget.position);
-            distanceError = distance < desiredDistanceMin
-                ? desiredDistanceMin - distance
-                : distance > desiredDistanceMax ? distance - desiredDistanceMax : 0f;
+            distanceError = DroneFollowRewards.DistanceError(distance, desiredDistanceMin, desiredDistanceMax);
         }
 
         float centerError = detection.Visible
@@ -445,6 +547,9 @@ public sealed class DroneFollowAgent : Agent
         _previousAltitudeError = altitudeError;
         _hasPreviousFollowState = true;
 
+        _visibleHistory[_visibleHistoryIndex] = detection.Visible;
+        _visibleHistoryIndex = (_visibleHistoryIndex + 1) % _visibleHistory.Length;
+
         if (detection.Visible)
         {
             float centeredness = Mathf.Clamp01(1f - centerError / 0.5f);
@@ -466,20 +571,32 @@ public sealed class DroneFollowAgent : Agent
         AddReward(-smoothActionPenalty * actionDeltaSquared);
     }
 
+    const float StickDeadzone = 0.1f;
+
     public override void Heuristic(in ActionBuffers actionsOut)
     {
         var ca = actionsOut.ContinuousActions;
-        var da = actionsOut.DiscreteActions;
-        da[0] = Input.GetKeyDown(KeyCode.G)
-            ? DroneFollowContract.LandAction
-            : 0;
         if (ca.Length != DroneFollowContract.ActionSize || _controller == null)
             return;
 
         if (useScriptedExpert)
         {
-            da[0] = 0;
             WriteExpertAction(ca);
+            return;
+        }
+
+        // WHY(demo quality): analog sticks give graded commands; keyboard keys are only -1/0/+1 and the policy
+        // imitates that bang-bang flying. Mode 2 like an RC transmitter: left stick = climb + yaw,
+        // right stick = forward + sideways.
+        Gamepad pad = Gamepad.current;
+        if (pad != null)
+        {
+            Vector2 left = Deadzone(pad.leftStick.ReadValue());
+            Vector2 right = Deadzone(pad.rightStick.ReadValue());
+            ca[0] = right.y;
+            ca[1] = -right.x;
+            ca[2] = left.y;
+            ca[3] = left.x;
             return;
         }
 
@@ -491,6 +608,14 @@ public sealed class DroneFollowAgent : Agent
         ca[3] = Input.GetKey(KeyCode.Q)
             ? -1f
             : Input.GetKey(KeyCode.E) ? 1f : 0f;
+    }
+
+    static Vector2 Deadzone(Vector2 stick)
+    {
+        float magnitude = stick.magnitude;
+        if (magnitude < StickDeadzone)
+            return Vector2.zero;
+        return stick * (Mathf.InverseLerp(StickDeadzone, 1f, Mathf.Min(1f, magnitude)) / magnitude);
     }
 
     // Ground-truth PD follower used only to record demonstrations; the trained policy never sees ground truth.
@@ -551,7 +676,7 @@ public sealed class DroneFollowAgent : Agent
         }
         else if (_landingRequested && _controller.State == DroneState.Landed)
         {
-            FinishSafeLanding();
+            FinishLanding();
         }
     }
 
@@ -577,19 +702,17 @@ public sealed class DroneFollowAgent : Agent
         }
     }
 
-    void FinishSafeLanding()
+    void FinishLanding()
     {
         if (_ending) return;
         _ending = true;
-        float minimumFlightDecisions = _episodeDecisionLimit * safeLandingMinimumFlightFraction;
-        if (_episodeFlightDecisions >= minimumFlightDecisions)
+        if (_walker != null && _walker.Finished && _gateCount > 0)
         {
-            AddReward(safeLandingReward);
-            if (_curriculumStage == 4 && _episodeFlightDecisions >= _episodeDecisionLimit)
+            float gateFraction = _gatesPassedWell / (float)_gateCount;
+            AddReward(flightCompletionReward * gateFraction * Mathf.Lerp(1f, 0.5f, _damage));
+            if (_curriculumStage == DroneFollowContract.CurriculumStages - 1 && gateFraction >= 0.75f)
                 _finalCurriculumStageCompleted = true;
         }
-        else
-            AddReward(-flightCompletionReward);
         EndEpisode();
     }
 }

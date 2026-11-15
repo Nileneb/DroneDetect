@@ -1,31 +1,71 @@
 # DroneFollow training
 
-## Curriculum and episode rewards
+## World, paths and gates
 
-`config/DroneFollow.yaml` advances the `follow_stage` environment parameter
-when the smoothed mean reward passes each threshold, after at least 50 episodes.
-The Unity agent applies the same stage to target motion and the maximum
-controlled-flight duration:
+**DroneDetect > DroneFollow > Build Terrain, Paths and Gates** (Play mode stopped) builds
+`DroneFollowWorld` in the open scene and disables the old flat ground, walls and `Vegetation` root:
 
-| Stage | Flight duration | Target motion |
-|---|---:|---|
-| 0 | 60 s | Target roams within a 5 m radius |
-| 1 | 90 s | Wider target movement with model-based person detection |
-| 2 | 120 s | Moderate target motion with model-based person detection |
-| 3 | 180 s | Full configured target motion/noise |
-| 4 | 240 s | Full difficulty and longest flights |
+- a 200 x 200 m terrain (`Ground` tag) with a flat area around the pad and hills up to 8 m that grow
+  steeper per quadrant (data in `Assets/Environment/DroneFollowTerrain/`);
+- `LandingPad`, a 1.5 x 0.1 x 1.5 m cube the drone starts from;
+- four closed walking loops `Paths/Path<i>_Difficulty<i>` (difficulty 0 = flat and gentle ... 3 = hilly
+  with tight turns, roughly 130–190 m, 2–3 min of walking). Waypoint `W00` sits 4 m from the pad;
+- one invisible trigger gate (8 m wide, 4 m tall, layer *Ignore Raycast*) per waypoint except `W00`;
+- ~220 optimized rocks/trees, at least 5 m from every path and 12 m from the pad, 40 % of them just
+  beside the paths so they appear in the follow camera. `Balanced_Rock` is never used (it contains a
+  human figure YOLO would detect).
 
-Rewards are based on improvement in distance-band, image-centering, and altitude
-errors rather than repeatedly charging the full absolute error. In addition,
-the detected box earns up to `centeredTargetReward` when its center overlaps the
-Main Camera crosshair, with the maximum at exact alignment. A smaller hold
-reward is paid only while the target is detected, centered, at the desired
-distance, and near the target altitude while the agent is airborne. Completing
-the stage duration gives a separate completion reward. A controlled landing
-receives its own reward only after the full stage flight duration. Earlier land
-actions are rejected and penalized, so the agent cannot end an episode early to
-avoid the follow task. At the duration limit, the training episode resets
-directly to takeoff rather than waiting on the ground.
+Paths are plain scene objects: drag the children of `Waypoints` around, add or delete some, then run
+**DroneDetect > DroneFollow > Rebuild Path Gates**, which snaps the waypoints onto the ground and
+regenerates the gates. Then run **DroneDetect > Configure Active Scene for DroneFollow**: it adds
+`DroneFollowPathWalker` to the target, assigns all paths to the agent, places the target at the first
+waypoint and the drone on the pad, and sets the 4-action continuous contract.
+
+## Episodes, curriculum and rewards
+
+Each episode picks a path with `difficulty <= follow_stage`, randomly forward or reverse, and a
+walking speed between 0.6 m/s and up to 1.2 m/s (the upper bound grows with the stage). The target
+walks the loop at that speed, sometimes pausing 1–3 s at a waypoint, and stays on the ground by a
+downward ray. The drone takes off from the pad. When the target is back at `W00`, the drone keeps
+following for 3 s, then the simulation lands it where it is and the episode ends after touchdown.
+A safety timeout (walk time + margin) ends episodes in which that never happens; it pays no
+completion reward.
+
+| Stage | Paths used | Target speed |
+|---|---|---|
+| 0 | flat loop | 0.6–0.9 m/s |
+| 1 | + gentle hills | up to ~1.0 m/s |
+| 2 | + hills and tighter turns | up to ~1.1 m/s |
+| 3 | all four loops | up to 1.2 m/s |
+
+`config/DroneFollow.yaml` advances the stage when the smoothed mean episode return passes 40 / 45 / 50
+after at least 100 episodes. These thresholds are estimates (see the comment there); check them in
+TensorBoard after the first run.
+
+Rewards:
+
+- **Gates (largest single reward, `gateReward` 0.5):** the next gate in walking order pays fully when
+  the drone flies through it with the person detected now and in at least half of the last 10
+  decisions, at 2–3 m distance; 40 % if visible but outside that distance; nothing if the person was
+  lost. A gate only counts after the target has walked past it (the drone trails), skipped gates
+  earn nothing, earlier gates are ignored.
+- **Dense shaping:** improvement of distance-band, image-centering and altitude errors, a centered
+  bonus, a hold bonus while detected, centered, at distance and altitude, a small lost-detection
+  penalty and an action-smoothness penalty. The distance error counts triple below 1.5 m, so flying
+  at the person is clearly worse than trailing too far.
+- **Completion:** `flightCompletionReward` on touchdown after the walk, scaled by the share of gates
+  passed well and reduced by damage.
+
+Landing is not a policy action anymore. On the real drone the operator presses **LAND** in the
+ground station, which sends the AR.Drone's native controlled descent.
+
+## Ultrasound altitude
+
+`SimulatedDroneController` reports `navdata.altitude` like the AR.Drone 2.0: the distance along the
+drone's body-down axis to the nearest surface, capped at `ultrasoundRange` (6 m). Over hills and
+rocks this is height above what is below, not world height; on a slope it is the slant distance,
+exactly as the real sensor reads. The policy still sees `altitude / 10`; the altitude reward uses
+the same value. Sim landing descends to the ground found by a downward ray, not to world y = 0.
 
 ## Sentis depth and object detection
 
@@ -64,8 +104,8 @@ model-license notice, not legal advice.
 
 The Play HUD overlays a center crosshair and a curriculum checklist. Lessons
 below the current `follow_stage` are marked complete, the active lesson shows
-its flight-time progress, and future lessons remain pending. The final long
-flight is checked off after its duration is survived. GroundCam and depth
+flight time and gates passed well, and future lessons remain pending. The final
+stage is checked off once a full-course episode passes at least 75 % of its gates. GroundCam and depth
 preview UI are scaled down for display; their render textures and the
 84x84 policy observation are unchanged.
 
@@ -74,34 +114,33 @@ reduces control authority; reaching terminal damage or entering Emergency ends
 the episode with the terminal crash penalty. Collision damage is disabled once
 controlled landing has started.
 
+## Recording manual demonstrations (Xbox controller)
+
+Connect an Xbox controller, open the training scene with the trainer stopped and select
+**DroneDetect > DroneFollow > Record Manual Demonstration**. The agent switches to `HeuristicOnly`
+and reads the controller through the Input System, Mode 2 like an RC transmitter:
+
+| Stick | Up/down | Left/right |
+|---|---|---|
+| Left | climb / descend | yaw left / right |
+| Right | forward / back | sideways |
+
+A 10 % deadzone filters stick drift. Without a controller the keyboard still works (WASD/arrows,
+Space/Left Shift, Q/E), but its commands are only full or zero, which the policy would imitate.
+Each episode is one path: fly smoothly behind the person at 2–3 m and ~1.5 m altitude; the
+simulation lands after the walk and starts the next path. Stop Play mode to keep the recording.
+Recordings accumulate as separate files in `results/demonstrations/manual/`, and training loads all
+of them. Plan: each of the four paths once forward and once reverse (~25 min). Delete a bad flight's
+file from that folder before training.
+
+Recordings made before the 4-action contract (with the land branch) are incompatible and must not
+be in that folder.
+
 ## Recording demonstrations with the scripted expert
 
-**DroneDetect > DroneFollow > Record Scripted Expert Demonstration** flies a
-ground-truth PD follower (`DroneFollowAgent.WriteExpertAction`) through random
-curriculum stages at training speed (`time_scale` 4, 60 captured frames per
-second) and records 30 000 decisions; stop Play mode earlier to keep a shorter
-recording. The expert only chooses the actions – the recorded observations are
-exactly the camera/YOLO/MiDaS/navdata observations the policy gets, so behavioral
-cloning and GAIL learn from the current sensor contract. Recordings made before
-a sensor change must be re-recorded.
-
-## Recording a manual demonstration
-
-With the training scene open and the ML-Agents trainer stopped, select
-**DroneDetect > DroneFollow > Record Manual Demonstration** in Unity. The editor
-switches the agent to `HeuristicOnly`; this mode is keyboard-controlled, not an
-automatic follower. The target wanders around its spawn point with varied
-directions, a 5–12 m radius, and infrequent short pauses. The recorder runs
-until Play mode is stopped.
-
-Controls (focus the Game view): **WASD/arrows** to move, **Space/Left Shift** to change altitude,
-**Q/E** to yaw, and **G** to request a controlled landing. Takeoff is automatic
-at the start of each episode. Early landing requests are rejected until the
-current episode's flight duration is complete. Stop Play mode when the
-demonstration is long enough. The new recording replaces
-`results/demonstrations/DroneFollowDemo.demo` only after a recording file has
-been created; the previous training demo remains available if recording or
-publishing fails. This is the path already configured for behavioral cloning.
+**DroneDetect > DroneFollow > Record Scripted Expert Demonstration** still flies the ground-truth PD
+follower through random stages at training speed and publishes `results/demonstrations/DroneFollowDemo.demo`.
+It is no longer used by the training config; point `demo_path` at it only for comparison runs.
 
 After recording, start a new trainer run to load the updated demo; a trainer
 that is already running does not reload demonstration files. `config/DroneFollow.yaml` warm-starts PPO with behavioral cloning and GAIL from the
@@ -118,24 +157,17 @@ restart Play after the trainer is listening. Do not start the manual-demo
 recording menu during training: it deliberately switches to `HeuristicOnly`
 and requires the PPO trainer to be stopped.
 
-## Vegetation collision and NavMesh setup
+## Vegetation collision
 
-With training and Play mode stopped, select
-**DroneDetect > DroneFollow > Optimize Vegetation Prefabs and Bake NavMesh**.
-The tool replaces tagged vegetation instances that use MeshColliders with
-shared prefabs under `Assets/Prefabs/DroneFollow/Vegetation`. Visual GLB meshes
-are kept intact; collision is changed to a small capsule for tall vegetation
-and a box for low vegetation. These simple colliders reduce per-instance
-triangle collision work. The tool creates the `NavMeshGeometry` user layer,
-places the Ground collider and vegetation proxies on it, then bakes a
-`NavMeshSurface` from physics colliders on that layer.
+**DroneDetect > DroneFollow > Optimize Vegetation Prefabs** replaces vegetation instances that use
+MeshColliders with shared prefabs under `Assets/Prefabs/DroneFollow/Vegetation` (visual mesh kept,
+collision reduced to a capsule or box). The terrain builder scatters these prefabs. There is no
+NavMesh anymore; the target walks fixed paths.
 
 `ProjectSettings/ProjectSettings.asset` enables Unity's collision-mesh
 prebaking for any MeshColliders that remain elsewhere in the project. This is
 an import/build-time tradeoff: it can reduce runtime mesh cooking but increases
-stored data and memory use. The current simulated target still moves through
-`SimulatedMovingTarget`; baking the NavMesh does not by itself make that target
-follow NavMesh paths.
+stored data and memory use.
 
 The ML-Agents RenderTexture sensor currently reads pixels synchronously from
 the GPU into a CPU `Texture2D` before sending observations to the trainer.

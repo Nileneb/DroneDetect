@@ -56,6 +56,12 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
     [Tooltip("Dauer der Landung in Sekunden")]
     public float landingDuration = 2.0f;
 
+    [Header("Ultrasound Altimeter")]
+    // WHY(sim-to-real, altitude): the AR.Drone 2.0 reports navdata altitude from its downward ultrasound
+    // sensor, i.e. height above whatever is below it, not above sea level; over hills both differ.
+    [Tooltip("Max. range of the downward ultrasound sensor in metres; farther ground reads as this value.")]
+    public float ultrasoundRange = 6f;
+
     [Header("Battery Simulation")]
     [Tooltip("Batterie-Drain pro Sekunde (Prozent)")]
     public float batteryDrainPerSec = 0.08f;
@@ -90,6 +96,8 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
     float _stateTimer;
     float _takeoffStartY;
     float _landingStartY;
+    float _landingGroundY;
+    readonly RaycastHit[] _rayHits = new RaycastHit[16];
     float _nextTakeoffDiagnosticTime;
 
     // Batterie
@@ -299,7 +307,7 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
         float progress = Mathf.Clamp01(_stateTimer / landingDuration);
 
         // Zielhoehe: Referenztrajektorie von Starthoehe nach knapp ueber Boden
-        float targetY = Mathf.Lerp(_landingStartY, 0.05f, progress);
+        float targetY = Mathf.Lerp(_landingStartY, _landingGroundY + 0.05f, progress);
 
         // PD-Regler fuer sanfte, stabile Landung
         float heightError = targetY - transform.position.y;
@@ -322,9 +330,10 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
         // The Rigidbody origin can remain above the floor because the drone
         // collider is offset from it. Test the collider's bottom, not its origin.
         Collider rootCollider = GetComponent<Collider>();
-        float groundClearance = rootCollider != null
+        float groundY = transform.position.y - RayDistance(Vector3.down);
+        float groundClearance = (rootCollider != null
             ? rootCollider.bounds.min.y
-            : transform.position.y;
+            : transform.position.y) - groundY;
         if (groundClearance < 0.15f && Mathf.Abs(verticalVel) < 0.5f)
         {
             _state = DroneState.Landed;
@@ -379,7 +388,7 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
         // Body-frame Geschwindigkeit (relativ zur Drohne)
         Vector3 localVel = transform.InverseTransformDirection(vel);
 
-        _navdata.altitude = Mathf.Max(0f, transform.position.y);
+        _navdata.altitude = RayDistance(-transform.up);
         _navdata.vx = localVel.z;  // vorwaerts
         _navdata.vy = localVel.x;  // seitlich
         _navdata.vz = vel.y;       // vertikal (world)
@@ -399,6 +408,22 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
         _navdata.pressure = (int)(101325f - _navdata.altitude * 12f); // Barometrisch
         _navdata.temperature = 25f; // Sim: Raumtemperatur
         _navdata.timestamp = Time.time;
+    }
+
+    /// <summary>Distance from the drone origin to the nearest solid surface along a ray, capped at the ultrasound range.</summary>
+    float RayDistance(Vector3 direction)
+    {
+        int hitCount = Physics.RaycastNonAlloc(
+            transform.position, direction, _rayHits, ultrasoundRange, ~0, QueryTriggerInteraction.Ignore);
+        float nearest = ultrasoundRange;
+        for (int i = 0; i < hitCount; i++)
+        {
+            Collider hitCollider = _rayHits[i].collider;
+            if (hitCollider.attachedRigidbody == _rb || hitCollider.transform.IsChildOf(transform))
+                continue;
+            nearest = Mathf.Min(nearest, _rayHits[i].distance);
+        }
+        return nearest;
     }
 
     // ═══════════════════════ IDroneController Implementierung ═══════════════════════
@@ -428,6 +453,7 @@ public class SimulatedDroneController : MonoBehaviour, IDroneController
         _state = DroneState.Landing;
         _stateTimer = 0f;
         _landingStartY = transform.position.y;
+        _landingGroundY = transform.position.y - RayDistance(Vector3.down);
 
         // Befehle zuruecksetzen
         _cmdPitch = _cmdRoll = _cmdGaz = _cmdYawRate = 0f;

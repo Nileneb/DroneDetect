@@ -14,9 +14,7 @@ public static class DroneFollowContract
     public const int DepthObservationHeight = 84;
 
     public const int ActionSize = 4;
-    public const int DiscreteBranchSize = 1;
-    public const int DiscreteActionCount = 2;
-    public const int LandAction = 1;
+    public const int CurriculumStages = 4;
     public const float DecisionRateHz = 10f;
 
     // WHY(sim-to-real, camera): AR.Drone 2.0 front camera streams 640x360 through a 92° diagonal lens

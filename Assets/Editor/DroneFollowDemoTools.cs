@@ -26,6 +26,11 @@ public static class DroneFollowDemoTools
     const string DemoName = "DroneFollowDemo";
     static readonly string DemoDirectory = Path.GetFullPath(
         Path.Combine(Application.dataPath, "..", "results", "demonstrations"));
+    // WHY(spec, demos): manual flights are recorded one path at a time and must accumulate; config
+    // DroneFollow.yaml loads every .demo file in this folder.
+    static readonly string ManualDemoDirectory = Path.Combine(DemoDirectory, "manual");
+
+    static string RecordingDirectory(bool scriptedExpert) => scriptedExpert ? DemoDirectory : ManualDemoDirectory;
 
     static DroneFollowDemoTools()
     {
@@ -78,7 +83,8 @@ public static class DroneFollowDemoTools
         {
             recordingName = "DF" + System.Guid.NewGuid().ToString("N").Substring(0, 8);
         }
-        while (File.Exists(Path.Combine(DemoDirectory, recordingName + ".demo")));
+        while (File.Exists(Path.Combine(RecordingDirectory(scriptedExpert), recordingName + ".demo")));
+        Directory.CreateDirectory(RecordingDirectory(scriptedExpert));
         SessionState.SetString(RecordingNameKey, recordingName);
         SessionState.SetBool(RestoreKey, true);
 
@@ -87,11 +93,13 @@ public static class DroneFollowDemoTools
         recorder.Record = true;
         recorder.NumStepsToRecord = 0;
         recorder.DemonstrationName = recordingName;
-        recorder.DemonstrationDirectory = DemoDirectory;
+        recorder.DemonstrationDirectory = RecordingDirectory(scriptedExpert);
 
         SessionState.SetBool(ExpertKey, scriptedExpert);
         SessionState.SetBool(PendingKey, true);
-        Debug.Log($"[DroneFollowDemo] Starting manual recording in HeuristicOnly mode. Fly with WASD/arrows, Space/Left Shift, and Q/E; press G to land. Stop Play mode to publish the recording as '{DemoName}.demo' in '{DemoDirectory}'.");
+        Debug.Log(scriptedExpert
+            ? $"[DroneFollowDemo] Starting scripted-expert recording. Stop Play mode to publish it as '{DemoName}.demo' in '{DemoDirectory}'."
+            : $"[DroneFollowDemo] Starting manual recording. Gamepad (Mode 2): left stick = climb/yaw, right stick = forward/sideways; keyboard fallback WASD, Space/Shift, Q/E. The sim lands after the target is home and starts the next path. Stop Play mode to keep the recording in '{ManualDemoDirectory}'.");
         EditorApplication.isPlaying = true;
     }
 
@@ -127,9 +135,6 @@ public static class DroneFollowDemoTools
 
         DemonstrationRecorder recorder = agent.GetComponent<DemonstrationRecorder>();
         BehaviorParameters behavior = agent.GetComponent<BehaviorParameters>();
-        DroneFollowDemoRoute route = agent.followTarget.GetComponent<DroneFollowDemoRoute>();
-        if (route != null)
-            route.enabled = false;
         if (recorder == null || behavior == null)
         {
             Debug.LogError("[DroneFollowDemo] DemonstrationRecorder or BehaviorParameters is missing.");
@@ -143,7 +148,7 @@ public static class DroneFollowDemoTools
         recorder.Record = true;
         recorder.NumStepsToRecord = scriptedExpert ? ExpertDemoSteps : 0;
         recorder.DemonstrationName = SessionState.GetString(RecordingNameKey, string.Empty);
-        recorder.DemonstrationDirectory = DemoDirectory;
+        recorder.DemonstrationDirectory = RecordingDirectory(scriptedExpert);
         if (scriptedExpert)
         {
             agent.useScriptedExpert = true;
@@ -174,10 +179,29 @@ public static class DroneFollowDemoTools
 
         string recordingName = SessionState.GetString(RecordingNameKey, string.Empty);
         if (!string.IsNullOrEmpty(recordingName))
-            PublishRecording(recordingName);
+        {
+            if (SessionState.GetBool(ExpertKey, false))
+                PublishRecording(recordingName);
+            else
+                ReportManualRecording(recordingName);
+        }
         SessionState.SetString(RecordingNameKey, string.Empty);
         SessionState.SetBool(RestoreKey, false);
         Debug.Log("[DroneFollowDemo] Restored the scene's saved PPO and recorder settings.");
+    }
+
+    static void ReportManualRecording(string recordingName)
+    {
+        string[] files = Directory.Exists(ManualDemoDirectory)
+            ? Directory.GetFiles(ManualDemoDirectory, recordingName + "*.demo")
+            : new string[0];
+        if (files.Length == 0 || new FileInfo(files[0]).Length == 0)
+        {
+            Debug.LogError($"[DroneFollowDemo] Manual recording '{recordingName}' was not written to '{ManualDemoDirectory}'.");
+            return;
+        }
+        int total = Directory.GetFiles(ManualDemoDirectory, "*.demo").Length;
+        Debug.Log($"[DroneFollowDemo] Kept manual recording '{files[0]}'; {total} manual demo file(s) are now used for training.");
     }
 
     static void PublishRecording(string recordingName)

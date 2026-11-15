@@ -1,20 +1,16 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Unity.AI.Navigation;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
-using UnityEngine.AI;
 using UnityEngine.SceneManagement;
 
 public static class DroneFollowVegetationTools
 {
     const string VegetationRootName = "Vegetation";
-    const string NavMeshRootName = "DroneFollowNavMesh";
-    const string NavMeshLayerName = "NavMeshGeometry";
     const string PrefabFolder = "Assets/Prefabs/DroneFollow/Vegetation";
-    [MenuItem("DroneDetect/DroneFollow/Optimize Vegetation Prefabs and Bake NavMesh")]
+    [MenuItem("DroneDetect/DroneFollow/Optimize Vegetation Prefabs")]
     public static void OptimizeActiveScene()
     {
         if (EditorApplication.isPlayingOrWillChangePlaymode)
@@ -30,10 +26,6 @@ public static class DroneFollowVegetationTools
             Debug.LogError("[DroneFollowVegetation] The active scene must contain a Vegetation root and a Ground-tagged object with a Collider.");
             return;
         }
-
-        int navMeshLayer = EnsureNavMeshLayer();
-        if (navMeshLayer < 0)
-            return;
 
         List<GameObject> vegetation = FindVegetationWithMeshColliders(vegetationRoot.transform);
         if (vegetation.Count == 0)
@@ -63,7 +55,7 @@ public static class DroneFollowVegetationTools
         foreach (KeyValuePair<string, GameObject> source in sourceByPath)
         {
             string outputPath = GetOptimizedPrefabPath(source.Key);
-            GameObject optimizedPrefab = CreateOptimizedPrefab(source.Value, outputPath, navMeshLayer);
+            GameObject optimizedPrefab = CreateOptimizedPrefab(source.Value, outputPath);
             if (optimizedPrefab == null)
                 return;
             optimizedPrefabs.Add(source.Key, optimizedPrefab);
@@ -108,54 +100,12 @@ public static class DroneFollowVegetationTools
             replacedCount++;
         }
 
-        Undo.RecordObject(ground, "Assign NavMesh geometry layer to Ground");
-        ground.layer = navMeshLayer;
-        ConfigureAndBakeNavMesh(navMeshLayer);
         EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
         EditorSceneManager.SaveScene(SceneManager.GetActiveScene());
         AssetDatabase.SaveAssets();
         Undo.CollapseUndoOperations(undoGroup);
 
-        Debug.Log($"[DroneFollowVegetation] Created {optimizedPrefabs.Count} shared prefabs, replaced {replacedCount} scene objects, assigned {NavMeshLayerName}, and baked the NavMesh.");
-    }
-
-    static int EnsureNavMeshLayer()
-    {
-        UnityEngine.Object[] assets = AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset");
-        if (assets.Length == 0)
-        {
-            Debug.LogError("[DroneFollowVegetation] Could not load ProjectSettings/TagManager.asset.");
-            return -1;
-        }
-
-        var tagManager = new SerializedObject(assets[0]);
-        SerializedProperty layers = tagManager.FindProperty("layers");
-        if (layers == null)
-        {
-            Debug.LogError("[DroneFollowVegetation] The TagManager layers property is unavailable.");
-            return -1;
-        }
-
-        int freeLayer = -1;
-        for (int i = 8; i < layers.arraySize; i++)
-        {
-            SerializedProperty layer = layers.GetArrayElementAtIndex(i);
-            if (layer.stringValue == NavMeshLayerName)
-                return i;
-            if (freeLayer < 0 && string.IsNullOrEmpty(layer.stringValue))
-                freeLayer = i;
-        }
-
-        if (freeLayer < 0)
-        {
-            Debug.LogError($"[DroneFollowVegetation] No free user layer is available for {NavMeshLayerName}.");
-            return -1;
-        }
-
-        layers.GetArrayElementAtIndex(freeLayer).stringValue = NavMeshLayerName;
-        tagManager.ApplyModifiedProperties();
-        AssetDatabase.SaveAssets();
-        return freeLayer;
+        Debug.Log($"[DroneFollowVegetation] Created {optimizedPrefabs.Count} shared prefabs, replaced {replacedCount} scene objects.");
     }
 
     static List<GameObject> FindVegetationWithMeshColliders(Transform root)
@@ -176,7 +126,7 @@ public static class DroneFollowVegetationTools
         return results;
     }
 
-    static GameObject CreateOptimizedPrefab(GameObject sourcePrefab, string outputPath, int navMeshLayer)
+    static GameObject CreateOptimizedPrefab(GameObject sourcePrefab, string outputPath)
     {
         var prefabRoot = new GameObject(Path.GetFileNameWithoutExtension(outputPath));
         try
@@ -200,7 +150,7 @@ public static class DroneFollowVegetationTools
             }
 
             prefabRoot.tag = "Obstacle";
-            CreateCollisionProxy(prefabRoot.transform, bounds, navMeshLayer);
+            CreateCollisionProxy(prefabRoot.transform, bounds);
 
             GameObject savedPrefab = PrefabUtility.SaveAsPrefabAsset(prefabRoot, outputPath);
             if (savedPrefab == null)
@@ -250,10 +200,9 @@ public static class DroneFollowVegetationTools
         return hasBounds;
     }
 
-    static void CreateCollisionProxy(Transform prefabRoot, Bounds bounds, int navMeshLayer)
+    static void CreateCollisionProxy(Transform prefabRoot, Bounds bounds)
     {
         var proxy = new GameObject("CollisionProxy");
-        proxy.layer = navMeshLayer;
         proxy.tag = "Obstacle";
         proxy.transform.SetParent(prefabRoot, false);
 
@@ -279,28 +228,6 @@ public static class DroneFollowVegetationTools
                 Mathf.Max(size.y, 0.2f),
                 Mathf.Max(size.z, 0.2f));
         }
-    }
-
-    static void ConfigureAndBakeNavMesh(int navMeshLayer)
-    {
-        GameObject surfaceObject = GameObject.Find(NavMeshRootName);
-        if (surfaceObject == null)
-        {
-            surfaceObject = new GameObject(NavMeshRootName);
-            Undo.RegisterCreatedObjectUndo(surfaceObject, "Create DroneFollow NavMesh surface");
-        }
-
-        NavMeshSurface surface = surfaceObject.GetComponent<NavMeshSurface>();
-        if (surface == null)
-            surface = Undo.AddComponent<NavMeshSurface>(surfaceObject);
-
-        surface.agentTypeID = 0;
-        surface.collectObjects = CollectObjects.All;
-        surface.useGeometry = NavMeshCollectGeometry.PhysicsColliders;
-        surface.layerMask = 1 << navMeshLayer;
-        surface.BuildNavMesh();
-        if (surface.navMeshData == null)
-            Debug.LogError("[DroneFollowVegetation] NavMesh build returned no data. Check that the Ground collider and vegetation proxies use the NavMeshGeometry layer.");
     }
 
     static GameObject FindByTag(string tag)

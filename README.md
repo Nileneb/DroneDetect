@@ -11,14 +11,14 @@ drone does – through its front camera:
 
 ```
                  ┌─────────────── simulation (training) ───────────────┐
-                 │  Unity scene + AR.Drone physics twin + moving person │
+                 │  hilly terrain + AR.Drone physics twin + path walker│
                  └──────────────────────────┬──────────────────────────┘
                                             │ same observation contract
 front camera 640×360 ──┬─► MiDaS v2.1 small ─► 84×84 relative depth ──────────┐
                        └─► YOLOv8n ─► person boxes ─► target tracker ─► box ──┤
 navdata (altitude, velocity, attitude, rates) ────────────────────────────────┤
                                                                                ▼
-                                         PPO policy (+ BC/GAIL warm start)  ──► forward, left, up, turn
+                         PPO policy (+ BC/GAIL from manual gamepad demos)  ──► forward, left, up, turn
                                                                                │
                          safety envelope (shadow mode, lost-target hover, ceiling, battery, link)
                                                                                ▼
@@ -34,7 +34,8 @@ navdata (altitude, velocity, attitude, rates) ───────────�
 | AR.Drone 2.0 physics twin (simulator) | `Assets/Scripts/SimulatedDroneController.cs` |
 | AR.Drone 2.0 driver: AT commands, navdata, H.264 video | `Assets/Scripts/ArDrone/` |
 | Android ground-station UI and MediaCodec decoder | `Assets/Scripts/ArDrone/GroundStationUI.cs`, `Assets/Plugins/Android/` |
-| Scene setup, scripted-expert demos, builds | `Assets/Editor/` |
+| Terrain, paths and gates, scene setup, demo recording, builds | `Assets/Editor/` |
+| Target walking loops and gate triggers | `Assets/Scripts/DroneFollowPath*.cs`, `DroneFollowGate.cs` |
 | Training configuration | `config/DroneFollow.yaml`, `tools/train.sh` |
 | Tests (wire format, sign conventions, tracker) | `Assets/Editor/Tests/` |
 
@@ -52,6 +53,9 @@ navdata (altitude, velocity, attitude, rates) ───────────�
 - **Imperfections during training.** 50–250 ms detection latency (Wi-Fi video +
   phone inference), 8 % missed detections, box jitter, randomized motor response,
   random start heading, wind.
+- **Same altimeter.** Sim altitude is a single downward ray capped at 6 m, like
+  the AR.Drone's ultrasound sensor, so over hills both report height above
+  what is below.
 - **Matched limits.** The physics twin uses the AR.Drone's defaults (12° tilt,
   0.7 m/s climb, 100°/s yaw), and the driver configures the real drone to them.
 
