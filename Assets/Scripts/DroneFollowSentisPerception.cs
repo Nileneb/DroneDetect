@@ -145,6 +145,12 @@ public sealed class DroneFollowSentisPerception :
     public PersonTargetTracker Tracker { get; private set; } = new PersonTargetTracker();
     public int PeopleInView { get; private set; }
 
+    /// <summary>All persons YOLO found in the latest processed frame (viewport rects, origin bottom-left). Display only.</summary>
+    public IReadOnlyList<Rect> PersonBoxes => _personBoxes;
+    /// <summary>Index into <see cref="PersonBoxes"/> of the locked target, or -1.</summary>
+    public int TargetBoxIndex { get; private set; } = -1;
+    readonly List<Rect> _personBoxes = new List<Rect>();
+
     const int AppearanceWidth = 160;
     const int AppearanceHeight = 90;
     const int ReidMaxCandidates = 3;
@@ -728,6 +734,9 @@ public sealed class DroneFollowSentisPerception :
         if (candidates.Count == 0 ||
             (randomizeDetections && Random.value < detectionDropoutProbability))
         {
+            _personBoxes.Clear();
+            TargetBoxIndex = -1;
+            PeopleInView = 0;
             PublishDetection(DroneTargetDetection.None(_yoloCaptureTime), Rect.zero);
             return;
         }
@@ -755,6 +764,16 @@ public sealed class DroneFollowSentisPerception :
         }
 
         PeopleInView = kept.Count;
+        _personBoxes.Clear();
+        TargetBoxIndex = -1;
+        foreach (DetectionCandidate person in kept)
+        {
+            _personBoxes.Add(new Rect(
+                crop.x + (person.CenterX - person.Width * 0.5f) * crop.width,
+                crop.y + (1f - person.CenterY - person.Height * 0.5f) * crop.height,
+                person.Width * crop.width,
+                person.Height * crop.height));
+        }
         _trackerCandidates.Clear();
         int identityCandidates = _reidWorker != null ? Mathf.Min(kept.Count, ReidMaxCandidates) : kept.Count;
         for (int i = 0; i < identityCandidates; i++)
@@ -831,6 +850,7 @@ public sealed class DroneFollowSentisPerception :
     void ResolveTarget(List<DetectionCandidate> kept, Rect crop, float captureTime)
     {
         int targetIndex = Tracker.Select(_trackerCandidates, Time.time, autoLockTarget);
+        TargetBoxIndex = targetIndex;
         if (targetIndex < 0)
         {
             PublishDetection(DroneTargetDetection.None(captureTime), Rect.zero);
@@ -931,6 +951,8 @@ public sealed class DroneFollowSentisPerception :
         _current = DroneTargetDetection.None(Time.time);
         _currentViewportBox = Rect.zero;
         _hasCurrentViewportBox = false;
+        _personBoxes.Clear();
+        TargetBoxIndex = -1;
     }
 
     static RenderTexture CreateInputTexture(int size, string textureName, RenderTextureFormat format)

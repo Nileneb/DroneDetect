@@ -15,18 +15,21 @@ public sealed class GroundStationUI : MonoBehaviour
     GUIStyle _label;
     GUIStyle _button;
     Texture2D _boxTexture;
+    Texture2D _personTexture;
     Texture2D _panelTexture;
 
     void Awake()
     {
         Screen.sleepTimeout = SleepTimeout.NeverSleep;
         _boxTexture = SolidTexture(new Color(0.1f, 1f, 0.3f, 1f));
+        _personTexture = SolidTexture(new Color(1f, 0.85f, 0.1f, 1f));
         _panelTexture = SolidTexture(new Color(0f, 0f, 0f, 0.55f));
     }
 
     void OnDestroy()
     {
         Destroy(_boxTexture);
+        Destroy(_personTexture);
         Destroy(_panelTexture);
     }
 
@@ -66,20 +69,32 @@ public sealed class GroundStationUI : MonoBehaviour
 
     void DrawTargetBox(Rect video)
     {
-        if (perception == null || !perception.TryGetCurrentViewportBox(out Rect box))
+        if (perception == null)
             return;
 
-        // Viewport boxes have a bottom-left origin; GUI coordinates start top-left.
-        var rect = new Rect(
-            video.x + box.x * video.width,
-            video.y + (1f - box.yMax) * video.height,
-            box.width * video.width,
-            box.height * video.height);
-        const float thickness = 4f;
-        GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, thickness), _boxTexture);
-        GUI.DrawTexture(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), _boxTexture);
-        GUI.DrawTexture(new Rect(rect.x, rect.y, thickness, rect.height), _boxTexture);
-        GUI.DrawTexture(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), _boxTexture);
+        // All persons thin yellow, the locked target thick green. Viewport boxes have a bottom-left origin.
+        var boxes = perception.PersonBoxes;
+        for (int i = 0; i < boxes.Count; i++)
+        {
+            bool target = i == perception.TargetBoxIndex;
+            DrawFrame(ToGui(video, boxes[i]), target ? _boxTexture : _personTexture, target ? 5f : 2f);
+            if (target)
+                GUI.Label(new Rect(video.x + boxes[i].x * video.width, video.y + (1f - boxes[i].yMax) * video.height - _label.fontSize * 1.6f, 300f, _label.fontSize * 1.6f), "TARGET", _label);
+        }
+    }
+
+    static Rect ToGui(Rect video, Rect box) => new Rect(
+        video.x + box.x * video.width,
+        video.y + (1f - box.yMax) * video.height,
+        box.width * video.width,
+        box.height * video.height);
+
+    static void DrawFrame(Rect rect, Texture2D texture, float thickness)
+    {
+        GUI.DrawTexture(new Rect(rect.x, rect.y, rect.width, thickness), texture);
+        GUI.DrawTexture(new Rect(rect.x, rect.yMax - thickness, rect.width, thickness), texture);
+        GUI.DrawTexture(new Rect(rect.x, rect.y, thickness, rect.height), texture);
+        GUI.DrawTexture(new Rect(rect.xMax - thickness, rect.y, thickness, rect.height), texture);
     }
 
     void DrawDepth(float unit)
