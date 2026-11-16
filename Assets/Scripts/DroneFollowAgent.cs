@@ -18,6 +18,7 @@ public sealed class DroneFollowAgent : Agent
     public DroneFollowSentisPerception perception;
     [Tooltip("Real-drone operation: no episode limit, no rewards, takeoff/landing stay with the operator.")]
     public bool deploymentMode;
+    DroneBehaviour _behaviour;
     [Tooltip("Demo recording only: Heuristic() flies a ground-truth follow controller instead of reading the gamepad.")]
     public bool useScriptedExpert;
 
@@ -155,6 +156,7 @@ public sealed class DroneFollowAgent : Agent
             _detector = perception;
         }
 
+        _behaviour = GetComponentInChildren<DroneBehaviour>(true);
         if (_controller == null)
             Debug.LogError("[DroneFollowAgent] No IDroneController is attached.", this);
         if (_detector == null)
@@ -525,6 +527,16 @@ public sealed class DroneFollowAgent : Agent
 
     void ApplyDeploymentAction(ActionSegment<float> ca)
     {
+        // With a mission state machine the policy only offers its command; the machine decides what is sent.
+        if (_behaviour != null)
+        {
+            _previousAction = new Vector4(
+                Mathf.Clamp(ca[0], -1f, 1f), Mathf.Clamp(ca[1], -1f, 1f),
+                Mathf.Clamp(ca[2], -1f, 1f), Mathf.Clamp(ca[3], -1f, 1f));
+            _behaviour.OfferPolicy(_previousAction);
+            return;
+        }
+
         if (_controller.State != DroneState.Hovering && _controller.State != DroneState.Flying)
         {
             _previousAction = Vector4.zero;

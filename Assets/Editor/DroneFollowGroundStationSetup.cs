@@ -75,6 +75,9 @@ public static class DroneFollowGroundStationSetup
         perception.autoLockTarget = false;
         perception.reidModel = reid;
         drone.perception = perception;
+        var behaviourComponent = station.AddComponent<DroneBehaviour>();
+        behaviourComponent.perception = perception;
+        drone.behaviour = behaviourComponent;
 
         var behavior = station.AddComponent<BehaviorParameters>();
         behavior.BehaviorName = DroneFollowContract.BehaviorName;

@@ -120,7 +120,7 @@ public sealed class GroundStationUI : MonoBehaviour
             : perception.Current.Visible ? $"Target locked · match {perception.Tracker.LastAppearanceMatch:P0} · {perception.Tracker.GallerySize} views"
             : $"Target locked · not visible (best person score {perception.LastPersonScore:F2})";
         string text =
-            $"{drone.SafetyStatus}\n" +
+            $"{(drone.behaviour != null ? $"[{drone.behaviour.State}] " : "")}{drone.SafetyStatus}\n" +
             $"State {drone.State} · Battery {nav.battery:F0}% · Alt {nav.altitude:F2} m · Video frames {drone.VideoFramesReceived}\n" +
             $"{tracking}\n" +
             $"Policy  fwd {policy.x:+0.00;-0.00}  left {policy.y:+0.00;-0.00}  up {policy.z:+0.00;-0.00}  turn {policy.w:+0.00;-0.00}";
@@ -160,15 +160,29 @@ public sealed class GroundStationUI : MonoBehaviour
             return;
 
         float height = unit * 2f;
-        float width = Screen.width / 7f - unit * 0.4f;
+        float width = Screen.width / 10f - unit * 0.4f;
         float y = Screen.height - height - unit * 0.4f;
         int column = 0;
         Rect Next() => new Rect(unit * 0.3f + column++ * (width + unit * 0.4f), y, width, height);
 
+        var behaviour = drone.behaviour;
         if (GUI.Button(Next(), "TAKE OFF", _button))
-            drone.Takeoff();
+        {
+            if (behaviour != null) behaviour.Request(OperatorCommand.Takeoff);
+            else drone.Takeoff();
+        }
+        if (behaviour != null)
+        {
+            if (GUI.Button(Next(), "SEARCH", _button)) behaviour.Request(OperatorCommand.Search);
+            if (GUI.Button(Next(), "FOLLOW", _button)) behaviour.Request(OperatorCommand.Follow);
+            if (GUI.Button(Next(), "HOVER", _button)) behaviour.Request(OperatorCommand.Hover);
+        }
         if (GUI.Button(Next(), "LAND", _button))
+        {
+            // Land is always sent directly too: the operator must be able to land even if the machine thinks it is idle.
+            behaviour?.Request(OperatorCommand.Land);
             drone.Land();
+        }
         if (GUI.Button(Next(), drone.shadowMode ? "SHADOW: ON" : "SHADOW: OFF", _button))
             drone.shadowMode = !drone.shadowMode;
         if (GUI.Button(Next(), "UNLOCK", _button) && perception != null)

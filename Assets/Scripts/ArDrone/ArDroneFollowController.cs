@@ -13,6 +13,8 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
 {
     public string droneAddress = ArDroneProtocol.DefaultAddress;
     public DroneFollowSentisPerception perception;
+    [Tooltip("Mission state machine; when present it owns take-off, landing and the safety decisions.")]
+    public DroneBehaviour behaviour;
 
     [Header("Safety")]
     [Tooltip("Policy runs and its commands are displayed, but the drone only hovers.")]
@@ -63,6 +65,9 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
         }
     }
 
+    /// <summary>Lets the state machine publish the policy's raw command for the UI and the flight log.</summary>
+    public void ReportPolicy(Vector4 command) => PolicyCommand = command;
+
     public bool BatteryLow => _navdata.battery > 0 && _navdata.battery < warnBelowBatteryPercent;
 
     /// <summary>True while the bottom camera is streamed (experimental): perception and policy are paused.</summary>
@@ -95,6 +100,8 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
 #else
         _decoder = new FfmpegH264Decoder(width, height);
 #endif
+        if (behaviour == null)
+            behaviour = GetComponent<DroneBehaviour>();
         _recorder = new FlightRecorder("flight");
         _link = new ArDroneLink(droneAddress);
         _link.Start();
@@ -121,8 +128,11 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
     // WHY(safety): leaving the app (call, home button) must never leave the drone flying without a pilot.
     void OnApplicationPause(bool paused)
     {
-        if (paused)
-            Land();
+        // The REC consent dialog pauses the app too; that must not land a flying drone.
+        if (!paused || ScreenRecorder.ConsentPending)
+            return;
+        behaviour?.NotifyAppPaused();
+        Land();
     }
 
     void Update()
@@ -156,7 +166,8 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
             _loggedFlags = raw.DroneState;
         }
         _recorder?.Write(Time.time, raw, PolicyCommand, _link.CommandedState, shadowMode, SafetyStatus,
-            perception != null && perception.Current.Visible, perception != null ? perception.PeopleInView : 0, perception != null ? perception.LastPersonScore : 0f, VideoFramesReceived);
+            perception != null && perception.Current.Visible, perception != null ? perception.PeopleInView : 0, perception != null ? perception.LastPersonScore : 0f, VideoFramesReceived,
+            behaviour != null ? behaviour.State.ToString() : "-", behaviour != null ? behaviour.BatteryFiltered : 0f);
 
         ArDroneProtocol.ToSimulatorConvention(raw, _navdata);
         // WHY(ardrone, vz): demo navdata reports vz as 0 on most firmware, so climb rate comes from altitude.
@@ -217,6 +228,13 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
         bool airborne = _state == DroneState.Hovering || _state == DroneState.Flying;
         if (perception != null && perception.Current.Visible)
             _lastTargetTime = Time.time;
+
+        if (behaviour != null)
+        {
+            // The state machine decides (link, battery, target loss); the controller only reports its status.
+            SafetyStatus = !IsLinkUp ? "Not connected" : behaviour.Status;
+            return;
+        }
 
         if (airborne && Time.time - _lastLinkTime > landAfterLinkLostSeconds)
         {
@@ -280,7 +298,8 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
         }
 
         bool targetLost = Time.time - _lastTargetTime > hoverAfterTargetLostSeconds;
-        if (shadowMode || targetLost)
+        // With a state machine, shadow mode and target loss are decided there.
+        if (behaviour == null && (shadowMode || targetLost))
         {
             Hover();
             return;

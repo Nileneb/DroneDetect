@@ -21,6 +21,11 @@ public static class ScreenRecorder
         }
     }
 
+    static float _consentUntil;
+
+    /// <summary>True while Android's screen-capture consent dialog may be open (it pauses the app).</summary>
+    public static bool ConsentPending => !IsRecording && Time.realtimeSinceStartup < _consentUntil;
+
     public static float RecordedSeconds => IsRecording ? Time.realtimeSinceStartup - _startedAt : 0f;
 
     /// <summary>Starts recording; Android shows its screen-capture consent dialog first.</summary>
@@ -32,6 +37,7 @@ public static class ScreenRecorder
             using var player = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
             using AndroidJavaObject activity = player.GetStatic<AndroidJavaObject>("currentActivity");
             using var recorder = new AndroidJavaClass(JavaClass);
+            _consentUntil = Time.realtimeSinceStartup + 20f;
             recorder.CallStatic("start", activity);
             _startedAt = Time.realtimeSinceStartup;
         }

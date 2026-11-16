@@ -13,7 +13,7 @@ public sealed class FlightRecorder : IDisposable
     const string Header =
         "t,state_hex,state_flags,ctrl_state,battery,alt,roll,pitch,yaw,vx,vy,vz," +
         "policy_fwd,policy_left,policy_up,policy_turn,pcmd_roll,pcmd_pitch,pcmd_gaz,pcmd_yaw,ref," +
-        "shadow,safety,target_visible,people,best_person_score,video_frames";
+        "shadow,safety,target_visible,people,best_person_score,video_frames,behaviour,battery_filtered";
 
     readonly StreamWriter _writer;
     float _lastFlush;
@@ -31,15 +31,16 @@ public sealed class FlightRecorder : IDisposable
 
     public void Write(float time, in ArDroneProtocol.Navdata nav,
         Vector4 policy, (float roll, float pitch, float gaz, float yaw, int refValue) pcmd,
-        bool shadow, string safety, bool targetVisible, int people, float personScore, int videoFrames)
+        bool shadow, string safety, bool targetVisible, int people, float personScore, int videoFrames,
+        string behaviour = "-", float batteryFiltered = 0f)
     {
         string row = string.Format(CultureInfo.InvariantCulture,
             "{0:F2},{1:X8},{2},{3},{4},{5:F3},{6:F1},{7:F1},{8:F1},{9:F2},{10:F2},{11:F2}," +
-            "{12:F2},{13:F2},{14:F2},{15:F2},{16:F2},{17:F2},{18:F2},{19:F2},{20},{21},{22},{23},{24},{25:F2},{26}",
+            "{12:F2},{13:F2},{14:F2},{15:F2},{16:F2},{17:F2},{18:F2},{19:F2},{20},{21},{22},{23},{24},{25:F2},{26},{27},{28:F0}",
             time, nav.DroneState, ArDroneProtocol.DescribeState(nav.DroneState), nav.ControlState, nav.BatteryPercent,
             nav.AltitudeM, nav.RollDeg, nav.PitchDeg, nav.YawDeg, nav.VxMs, nav.VyMs, nav.VzMs,
             policy.x, policy.y, policy.z, policy.w, pcmd.roll, pcmd.pitch, pcmd.gaz, pcmd.yaw, pcmd.refValue,
-            shadow ? 1 : 0, safety.Replace(',', ';'), targetVisible ? 1 : 0, people, personScore, videoFrames);
+            shadow ? 1 : 0, safety.Replace(',', ';'), targetVisible ? 1 : 0, people, personScore, videoFrames, behaviour, batteryFiltered);
         _writer.WriteLine(row);
         if (Time.realtimeSinceStartup - _lastFlush > 1f)
         {
