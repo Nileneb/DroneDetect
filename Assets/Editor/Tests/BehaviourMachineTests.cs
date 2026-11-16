@@ -139,6 +139,36 @@ public sealed class BehaviourMachineTests
     }
 
     [Test]
+    public void FollowStartsWithCleanLostClock()
+    {
+        var machine = Airborne(out var input);
+        Run(machine, input, 20f); // long hover without target
+        input.TargetVisible = true;
+        input.Operator = OperatorCommand.Follow;
+        var output = machine.Tick(input, Dt);
+        Assert.AreEqual(BehaviourState.Follow, output.State);
+        input.Operator = OperatorCommand.None;
+        Assert.AreEqual(BehaviourState.Follow, Run(machine, input, 0.5f).State);
+    }
+
+    [Test]
+    public void FlickeringDetectionsDoNotKeepFollowAlive()
+    {
+        var machine = Airborne(out var input);
+        input.TargetVisible = true;
+        input.Operator = OperatorCommand.Follow;
+        Run(machine, input, 1f);
+        input.Operator = OperatorCommand.None;
+        // 0.1 s sighting every 0.5 s: never stable, so the target counts as lost after followLostSeconds.
+        for (int i = 0; i < 25; i++)
+        {
+            input.TargetVisible = i % 5 == 0;
+            machine.Tick(input, Dt);
+        }
+        Assert.AreEqual(BehaviourState.LostTarget, machine.State);
+    }
+
+    [Test]
     public void LostTargetReacquiredReturnsToFollow()
     {
         var machine = Airborne(out var input);
@@ -150,7 +180,7 @@ public sealed class BehaviourMachineTests
         Run(machine, input, 2f);
         Assert.AreEqual(BehaviourState.LostTarget, machine.State);
         input.TargetVisible = true;
-        Assert.AreEqual(BehaviourState.Follow, machine.Tick(input, Dt).State);
+        Assert.AreEqual(BehaviourState.Follow, Run(machine, input, 0.7f).State);
     }
 
     [Test]

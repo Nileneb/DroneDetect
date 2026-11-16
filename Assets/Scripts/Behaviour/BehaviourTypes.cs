@@ -63,6 +63,8 @@ public sealed class BehaviourSettings
     [Min(0.1f)] public float lostToSearchSeconds = 3f;
     [Min(1f)] public float lostToLandSeconds = 20f;
     [Min(0.1f)] public float acquireSeconds = 0.5f;
+    [Tooltip("A sighting must last this long to reset the lost-target clock (filters single false detections).")]
+    [Min(0.05f)] public float lostResetSeconds = 0.25f;
     [Min(1f)] public float takeoffTimeoutSeconds = 8f;
     [Range(0.05f, 1f)] public float searchYaw = 0.35f;
     [Range(0.05f, 1f)] public float searchClimb = 0.3f;

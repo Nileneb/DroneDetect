@@ -41,8 +41,13 @@ public sealed class BehaviourMachine
         _enteredThisTick = false;
 
         float batteryFiltered = UpdateBattery(input, dt);
-        _lostTime = input.TargetVisible ? 0f : _lostTime + dt;
         _visibleTime = input.TargetVisible ? _visibleTime + dt : 0f;
+        // WHY(false detections): one stray detection must not restart the lost-target clock (twin: a flickering
+        // false match kept Follow alive for 90 s without a target); only a stable sighting resets it.
+        if (!input.TargetVisible)
+            _lostTime += dt;
+        else if (_visibleTime >= _s.lostResetSeconds)
+            _lostTime = 0f;
         _linkLostTime = input.LinkUp ? 0f : _linkLostTime + dt;
 
         bool flightPhase = State != BehaviourState.Idle && State != BehaviourState.Landing && State != BehaviourState.Failsafe;
@@ -136,7 +141,7 @@ public sealed class BehaviourMachine
             case BehaviourState.LostTarget:
                 if (input.Operator == OperatorCommand.Hover)
                     Enter(BehaviourState.Hover, "operator: hover");
-                else if (input.TargetVisible)
+                else if (_visibleTime >= _s.acquireSeconds)
                     Enter(BehaviourState.Follow, "target reacquired");
                 else if (_lostTime > _s.lostToLandSeconds)
                     Enter(BehaviourState.Landing, "target lost too long");
@@ -206,6 +211,9 @@ public sealed class BehaviourMachine
         LastReason = reason;
         if (state == BehaviourState.Idle || state == BehaviourState.Hover)
             _autoSearch = false;
+        // Following starts with a clean clock: time without target before it must not count against it.
+        if (state == BehaviourState.Follow)
+            _lostTime = 0f;
     }
 
     float UpdateBattery(in BehaviourInputs input, float dt)

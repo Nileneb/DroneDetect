@@ -13,6 +13,13 @@ public sealed class DroneBehaviour : MonoBehaviour
     [Tooltip("Simulator: treat the target as lost when the detector does not see it (same as on the phone).")]
     public bool logTransitions = true;
 
+    [Header("Test hooks (digital twin)")]
+    [Tooltip("Negative = off. Otherwise replaces the drone's battery reading, e.g. to test the failsafe.")]
+    public float batteryOverride = -1f;
+    public bool simulateLinkLoss;
+    [Tooltip("Pretends the detector never sees the target (deterministic lost-target path).")]
+    public bool forceTargetLost;
+
     IDroneController _controller;
     ArDroneFollowController _ardrone;
     BehaviourMachine _machine;
@@ -27,6 +34,7 @@ public sealed class DroneBehaviour : MonoBehaviour
     public float BatteryFiltered => _last.BatteryFiltered;
     public bool ShadowActive => _ardrone != null && _ardrone.shadowMode;
     public BehaviourSettings Settings => settings;
+    public Vector4 LastPolicy => _policy;
 
     void OnEnable()
     {
@@ -70,9 +78,9 @@ public sealed class DroneBehaviour : MonoBehaviour
         {
             DroneState = _controller.State,
             Altitude = nav != null ? nav.altitude : 0f,
-            Battery = nav != null ? nav.battery : 0f,
-            LinkUp = _ardrone == null || _ardrone.IsLinkUp,
-            TargetVisible = perception != null && perception.Current.Visible,
+            Battery = batteryOverride >= 0f ? batteryOverride : nav != null ? nav.battery : 0f,
+            LinkUp = !simulateLinkLoss && (_ardrone == null || _ardrone.IsLinkUp),
+            TargetVisible = !forceTargetLost && perception != null && perception.Current.Visible,
             Policy = _policy,
             Operator = _pendingOperator,
             AppPaused = _appPaused

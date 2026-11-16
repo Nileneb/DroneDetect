@@ -49,6 +49,9 @@ public sealed class DroneFollowPathWalker : MonoBehaviour
         UpdateAnimation();
     }
 
+    /// <summary>Stops walking in place (test benches); Begin starts a new walk.</summary>
+    public void Stop() => _path = null;
+
     void Update()
     {
         if (_path == null || _finished)
