@@ -26,6 +26,10 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
     [Min(0.2f)] public float landAfterLinkLostSeconds = 1f;
 
     ArDroneLink _link;
+    FlightRecorder _recorder;
+    ArDroneProtocol.Navdata _rawNavdata;
+    uint _loggedFlags;
+    bool _configRequested;
     ArDroneVideoStream _video;
     IH264Decoder _decoder;
     Texture2D _frameTexture;
@@ -54,7 +58,7 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
             if (value == _safetyStatus)
                 return;
             // Logged on every change (with state, altitude, battery) so a crash can be reconstructed from logcat.
-            Debug.Log($"[ArDroneSafety] t={Time.time:F1}s '{_safetyStatus}' -> '{value}' state={_state} alt={_navdata.altitude:F2}m battery={_navdata.battery:F0}% shadow={shadowMode} policy={PolicyCommand}");
+            Debug.Log($"[ArDroneSafety] t={Time.time:F1}s '{_safetyStatus}' -> '{value}' state={_state} alt={_navdata.altitude:F2}m battery={_navdata.battery:F0}% shadow={shadowMode} policy={PolicyCommand} flags={ArDroneProtocol.DescribeState(_rawNavdata.DroneState)}");
             _safetyStatus = value;
         }
     }
@@ -91,6 +95,7 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
 #else
         _decoder = new FfmpegH264Decoder(width, height);
 #endif
+        _recorder = new FlightRecorder("flight");
         _link = new ArDroneLink(droneAddress);
         _link.Start();
         _video = new ArDroneVideoStream(_decoder, droneAddress);
@@ -102,6 +107,8 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
     void OnDisable()
     {
         _video?.Dispose();
+        _recorder?.Dispose();
+        _recorder = null;
         _link?.Dispose();
         _decoder?.Dispose();
         _video = null;
@@ -135,6 +142,21 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
 
         if (_link.IsConnected)
             _lastLinkTime = Time.time;
+
+        _rawNavdata = raw;
+        if (!_configRequested)
+        {
+            // Once per session: what the firmware reports as its own configuration (limits, video codec, ...).
+            _configRequested = true;
+            _link.DumpConfigAsync(System.IO.Path.Combine(Application.persistentDataPath, $"drone_config_{System.DateTime.Now:yyyyMMdd_HHmmss}.txt"));
+        }
+        if (raw.DroneState != _loggedFlags)
+        {
+            Debug.Log($"[ArDroneWire] state flags {ArDroneProtocol.DescribeState(_loggedFlags)} -> {ArDroneProtocol.DescribeState(raw.DroneState)} (0x{raw.DroneState:X8}) ctrl={raw.ControlState} alt={raw.AltitudeM:F2}m battery={raw.BatteryPercent}%");
+            _loggedFlags = raw.DroneState;
+        }
+        _recorder?.Write(Time.time, raw, PolicyCommand, _link.CommandedState, shadowMode, SafetyStatus,
+            perception != null && perception.Current.Visible, perception != null ? perception.PeopleInView : 0, perception != null ? perception.LastPersonScore : 0f, VideoFramesReceived);
 
         ArDroneProtocol.ToSimulatorConvention(raw, _navdata);
         // WHY(ardrone, vz): demo navdata reports vz as 0 on most firmware, so climb rate comes from altitude.

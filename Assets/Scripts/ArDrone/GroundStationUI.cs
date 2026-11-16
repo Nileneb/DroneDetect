@@ -116,9 +116,9 @@ public sealed class GroundStationUI : MonoBehaviour
         NavdataPacket nav = drone.Navdata;
         Vector4 policy = drone.PolicyCommand;
         string tracking = perception == null ? "-"
-            : !perception.Tracker.HasLock ? $"Tap the person to follow ({perception.PeopleInView} in view)"
+            : !perception.Tracker.HasLock ? $"Tap the person to follow ({perception.PeopleInView} in view, best score {perception.LastPersonScore:F2})"
             : perception.Current.Visible ? $"Target locked · match {perception.Tracker.LastAppearanceMatch:P0} · {perception.Tracker.GallerySize} views"
-            : "Target locked · not visible";
+            : $"Target locked · not visible (best person score {perception.LastPersonScore:F2})";
         string text =
             $"{drone.SafetyStatus}\n" +
             $"State {drone.State} · Battery {nav.battery:F0}% · Alt {nav.altitude:F2} m · Video frames {drone.VideoFramesReceived}\n" +

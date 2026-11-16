@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Collections.Concurrent;
 using System.Net;
 using System.Net.Sockets;
@@ -118,7 +119,56 @@ public sealed class ArDroneLink : IDisposable
         Enqueue(ArDroneProtocol.Ref(NextSequence(), ArDroneProtocol.RefEmergencyToggle));
     }
 
-    void Enqueue(string command) => _oneShotCommands.Enqueue(command);
+    /// <summary>The PCMD axes and AT*REF value the 30 Hz command loop is currently sending.</summary>
+    public (float roll, float pitch, float gaz, float yaw, int refValue) CommandedState
+    {
+        get
+        {
+            lock (_lock)
+                return (_roll, _pitch, _gaz, _yaw, _refValue);
+        }
+    }
+
+    void Enqueue(string command)
+    {
+        // One-shot commands (CONFIG, CTRL, FTRIM, emergency toggle) are rare, so each one is logged as sent.
+        UnityEngine.Debug.Log($"[ArDroneWire] AT> {command.TrimEnd('\r')}");
+        _oneShotCommands.Enqueue(command);
+    }
+
+    /// <summary>
+    /// Asks the drone for its full configuration (AT*CTRL mode 4, answer on TCP 5559) and writes it to
+    /// <paramref name="path"/>: what the firmware actually offers and which limits are really active.
+    /// </summary>
+    public void DumpConfigAsync(string path)
+    {
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                Enqueue(ArDroneProtocol.Control(NextSequence(), 4));
+                using var client = new TcpClient { ReceiveTimeout = 2000 };
+                client.Connect(_address, 5559);
+                var text = new StringBuilder();
+                var buffer = new byte[4096];
+                var stream = client.GetStream();
+                try
+                {
+                    int read;
+                    while ((read = stream.Read(buffer, 0, buffer.Length)) > 0)
+                        text.Append(Encoding.ASCII.GetString(buffer, 0, read));
+                }
+                catch (IOException) { /* read timeout = end of the config blob */ }
+                File.WriteAllText(path, text.ToString());
+                UnityEngine.Debug.Log($"[ArDroneWire] Drone config ({text.Length} bytes) written to {path}");
+            }
+            catch (Exception exception)
+            {
+                UnityEngine.Debug.LogWarning($"[ArDroneWire] Config dump failed: {exception.Message}");
+            }
+        }) { IsBackground = true, Name = "ArDrone config" };
+        thread.Start();
+    }
 
     int NextSequence() => Interlocked.Increment(ref _sequence);
 

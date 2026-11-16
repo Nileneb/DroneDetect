@@ -31,6 +31,32 @@ public static class ArDroneProtocol
     public const uint StateComWatchdogMask = 1u << 30;
     public const uint StateEmergencyMask = 1u << 31;
 
+    static readonly string[] StateBitNames =
+    {
+        "FLY", "VIDEO", "VISION", "CONTROL_ALGO", "ALTITUDE_CTRL", "USER_FEEDBACK", "CMD_ACK", "CAMERA",
+        "TRAVELLING", "USB", "NAVDATA_DEMO", "NAVDATA_BOOTSTRAP", "MOTORS_BRUSHED", "COM_LOST", "GYROS_ZERO", "VBAT_LOW",
+        "VBAT_HIGH", "TIMER_ELAPSED", "NOT_ENOUGH_POWER", "ANGLES_OUT_OF_RANGE", "WIND", "ULTRASOUND_ERR", "CUTOUT", "PIC_VERSION_OK",
+        "ATCODEC_THREAD", "NAVDATA_THREAD", "VIDEO_THREAD", "ACQ_THREAD", "CTRL_WATCHDOG", "ADC_WATCHDOG", "COM_WATCHDOG", "EMERGENCY"
+    };
+
+    /// <summary>Readable names of the SDK's ardrone_state bits that matter for diagnosing a crash.</summary>
+    public static string DescribeState(uint state)
+    {
+        // Bits that are normally set in flight (threads running, demo mode, ...) would drown out the faults.
+        const uint noise = (1u << 1) | (1u << 2) | (1u << 3) | (1u << 4) | (1u << 6) | (1u << 7) | (1u << 10) |
+                           (1u << 23) | (1u << 24) | (1u << 25) | (1u << 26) | (1u << 27);
+        var names = new System.Text.StringBuilder();
+        for (int bit = 0; bit < 32; bit++)
+        {
+            if ((state & (1u << bit)) == 0 || (noise & (1u << bit)) != 0)
+                continue;
+            if (names.Length > 0)
+                names.Append('|');
+            names.Append(StateBitNames[bit]);
+        }
+        return names.Length == 0 ? "-" : names.ToString();
+    }
+
     public static string Ref(int sequence, int value) =>
         string.Format(CultureInfo.InvariantCulture, "AT*REF={0},{1}\r", sequence, value);
 
