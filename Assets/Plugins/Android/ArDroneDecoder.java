@@ -124,12 +124,17 @@ public final class ArDroneDecoder {
      * Binding the process to the Wi-Fi network keeps all drone traffic on the drone's Wi-Fi.
      */
     public static boolean bindProcessToWifi(Context context) {
-        ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
-        for (Network network : manager.getAllNetworks()) {
-            NetworkCapabilities capabilities = manager.getNetworkCapabilities(network);
-            if (capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                return manager.bindProcessToNetwork(network);
+        try {
+            ConnectivityManager manager = (ConnectivityManager) context.getSystemService(Context.CONNECTIVITY_SERVICE);
+            for (Network network : manager.getAllNetworks()) {
+                NetworkCapabilities capabilities = manager.getNetworkCapabilities(network);
+                if (capabilities != null && capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                    return manager.bindProcessToNetwork(network);
+                }
             }
+        } catch (SecurityException e) {
+            Log.e(TAG, "bindProcessToWifi needs ACCESS_NETWORK_STATE", e);
+            return false;
         }
         Log.w(TAG, "No Wi-Fi network found; connect the phone to the drone's ardrone2_xxxx network");
         return false;

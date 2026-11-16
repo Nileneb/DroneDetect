@@ -52,8 +52,11 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
         _frameTexture = new Texture2D(width, height, TextureFormat.RGBA32, false) { name = "ArDroneVideo" };
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-        if (!AndroidH264Decoder.BindProcessToWifi())
-            Debug.LogError("[ArDroneFollowController] Phone is not on Wi-Fi; connect it to the drone's ardrone2_xxxx network.");
+        bool wifiBound = false;
+        try { wifiBound = AndroidH264Decoder.BindProcessToWifi(); }
+        catch (System.Exception exception) { Debug.LogException(exception); }
+        if (!wifiBound)
+            Debug.LogError("[ArDroneFollowController] Could not bind to Wi-Fi; connect the phone to the drone's ardrone2_xxxx network.");
         _decoder = new AndroidH264Decoder(width, height);
 #else
         _decoder = new FfmpegH264Decoder(width, height);
