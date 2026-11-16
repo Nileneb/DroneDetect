@@ -5,4 +5,16 @@
          permission getAllNetworks() throws SecurityException and the drone link never starts. -->
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Screen recording (REC button): MediaProjection runs in a foreground service. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <application>
+        <activity android:name="dronedetect.rec.ScreenRecorder$ConsentActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:exported="false" />
+        <service android:name="dronedetect.rec.ScreenRecorder$RecordService"
+            android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
+    </application>
 </manifest>

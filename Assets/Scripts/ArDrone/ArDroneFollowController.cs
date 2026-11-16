@@ -44,6 +44,19 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
     public Vector4 SentCommand { get; private set; }
     public string SafetyStatus { get; private set; } = "Not connected";
 
+    /// <summary>True while the bottom camera is streamed (experimental): perception and policy are paused.</summary>
+    public bool BottomCameraActive { get; private set; }
+
+    public void SetBottomCamera(bool bottom)
+    {
+        if (_link == null || bottom == BottomCameraActive)
+            return;
+        BottomCameraActive = bottom;
+        _link.SetVideoChannel(bottom);
+        perception?.ResetDetection();
+        Hover();
+    }
+
     void OnEnable()
     {
         int width = DroneFollowContract.CameraWidth;
@@ -149,6 +162,12 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
 
         _frameTexture.LoadRawTextureData(_frameBuffer);
         _frameTexture.Apply(false, false);
+        // The bottom view is for the operator only: YOLO/OSNet/MiDaS and the policy were trained on the front view.
+        if (BottomCameraActive)
+        {
+            Graphics.Blit(_frameTexture, perception.rgbInput);
+            return;
+        }
         perception.SubmitFrame(_frameTexture);
     }
 
@@ -215,6 +234,11 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
         PolicyCommand = new Vector4(forward, left, up, turn);
         if (_link == null || _landingForSafety)
             return;
+        if (BottomCameraActive)
+        {
+            Hover();
+            return;
+        }
 
         bool targetLost = Time.time - _lastTargetTime > hoverAfterTargetLostSeconds;
         if (shadowMode || targetLost)

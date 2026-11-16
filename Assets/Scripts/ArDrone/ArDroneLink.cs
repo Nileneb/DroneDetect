@@ -88,6 +88,13 @@ public sealed class ArDroneLink : IDisposable
         }
     }
 
+    /// <summary>
+    /// Switches the single video stream between the front (0) and the bottom (1) camera.
+    /// The AR.Drone 2.0 streams only one camera at a time; the encoder restarts, so the key-frame wait handles the switch.
+    /// </summary>
+    public void SetVideoChannel(bool bottom) =>
+        Enqueue(ArDroneProtocol.Config(NextSequence(), "video:video_channel", bottom ? "1" : "0"));
+
     public void Takeoff()
     {
         Enqueue(ArDroneProtocol.FlatTrim(NextSequence()));

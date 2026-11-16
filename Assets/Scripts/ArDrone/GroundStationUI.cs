@@ -16,6 +16,8 @@ public sealed class GroundStationUI : MonoBehaviour
     GUIStyle _button;
     Texture2D _boxTexture;
     Texture2D _personTexture;
+    bool _wasRecording;
+    float _recordingSince;
     Texture2D _panelTexture;
 
     void Awake()
@@ -132,7 +134,7 @@ public sealed class GroundStationUI : MonoBehaviour
             return;
 
         float height = unit * 2f;
-        float width = Screen.width / 5f - unit * 0.4f;
+        float width = Screen.width / 7f - unit * 0.4f;
         float y = Screen.height - height - unit * 0.4f;
         int column = 0;
         Rect Next() => new Rect(unit * 0.3f + column++ * (width + unit * 0.4f), y, width, height);
@@ -146,7 +148,22 @@ public sealed class GroundStationUI : MonoBehaviour
         if (GUI.Button(Next(), "UNLOCK", _button) && perception != null)
             perception.Tracker.Reset();
 
+        if (GUI.Button(Next(), drone.BottomCameraActive ? "CAM: BOTTOM" : "CAM: FRONT", _button))
+            drone.SetBottomCamera(!drone.BottomCameraActive);
+
+        bool recording = ScreenRecorder.IsRecording;
+        if (recording && !_wasRecording)
+            _recordingSince = Time.realtimeSinceStartup;
+        _wasRecording = recording;
         Color previous = GUI.backgroundColor;
+        GUI.backgroundColor = recording && (int)(Time.realtimeSinceStartup * 2f) % 2 == 0 ? Color.red : previous;
+        string recLabel = recording ? $"STOP {(int)(Time.realtimeSinceStartup - _recordingSince) / 60:00}:{(int)(Time.realtimeSinceStartup - _recordingSince) % 60:00}" : "REC";
+        if (GUI.Button(Next(), recLabel, _button))
+        {
+            if (recording) ScreenRecorder.Stop();
+            else ScreenRecorder.Start();
+        }
+
         GUI.backgroundColor = Color.red;
         if (GUI.Button(Next(), "EMERGENCY", _button))
             drone.EmergencyReset();
