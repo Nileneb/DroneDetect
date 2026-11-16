@@ -19,7 +19,10 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
     public bool shadowMode = true;
     [Min(0.1f)] public float hoverAfterTargetLostSeconds = 1.5f;
     [Min(0.5f)] public float maxAltitudeMeters = 2.5f;
-    [Range(0, 100)] public int landBelowBatteryPercent = 15;
+    [Tooltip("Warning only (shown in the UI); flying below this level stays allowed.")]
+    [Range(0, 100)] public int warnBelowBatteryPercent = 25;
+    [Tooltip("Emergency landing. The AR.Drone battery voltage sags under load, so 15 % in the air dropped the drone.")]
+    [Range(0, 100)] public int landBelowBatteryPercent = 12;
     [Min(0.2f)] public float landAfterLinkLostSeconds = 1f;
 
     ArDroneLink _link;
@@ -42,7 +45,21 @@ public sealed class ArDroneFollowController : MonoBehaviour, IDroneController
     public int VideoFramesReceived => _video?.FramesReceived ?? 0;
     public Vector4 PolicyCommand { get; private set; }
     public Vector4 SentCommand { get; private set; }
-    public string SafetyStatus { get; private set; } = "Not connected";
+    string _safetyStatus = "Not connected";
+    public string SafetyStatus
+    {
+        get => _safetyStatus;
+        private set
+        {
+            if (value == _safetyStatus)
+                return;
+            // Logged on every change (with state, altitude, battery) so a crash can be reconstructed from logcat.
+            Debug.Log($"[ArDroneSafety] t={Time.time:F1}s '{_safetyStatus}' -> '{value}' state={_state} alt={_navdata.altitude:F2}m battery={_navdata.battery:F0}% shadow={shadowMode} policy={PolicyCommand}");
+            _safetyStatus = value;
+        }
+    }
+
+    public bool BatteryLow => _navdata.battery > 0 && _navdata.battery < warnBelowBatteryPercent;
 
     /// <summary>True while the bottom camera is streamed (experimental): perception and policy are paused.</summary>
     public bool BottomCameraActive { get; private set; }

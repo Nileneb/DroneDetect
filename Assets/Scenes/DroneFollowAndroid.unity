@@ -119,7 +119,7 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
---- !u!1 &1049231252
+--- !u!1 &1290385672
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -127,14 +127,14 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 1049231260}
-  - component: {fileID: 1049231259}
-  - component: {fileID: 1049231258}
-  - component: {fileID: 1049231257}
-  - component: {fileID: 1049231256}
-  - component: {fileID: 1049231255}
-  - component: {fileID: 1049231254}
-  - component: {fileID: 1049231253}
+  - component: {fileID: 1290385680}
+  - component: {fileID: 1290385679}
+  - component: {fileID: 1290385678}
+  - component: {fileID: 1290385677}
+  - component: {fileID: 1290385676}
+  - component: {fileID: 1290385675}
+  - component: {fileID: 1290385674}
+  - component: {fileID: 1290385673}
   m_Layer: 0
   m_Name: GroundStation
   m_TagString: Untagged
@@ -142,28 +142,28 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!114 &1049231253
+--- !u!114 &1290385673
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1049231252}
+  m_GameObject: {fileID: 1290385672}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 417e36105a8005a21bbfbb77359e3afa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GroundStationUI
-  drone: {fileID: 1049231259}
-  perception: {fileID: 1049231258}
-  agent: {fileID: 1049231255}
---- !u!114 &1049231254
+  drone: {fileID: 1290385679}
+  perception: {fileID: 1290385678}
+  agent: {fileID: 1290385675}
+--- !u!114 &1290385674
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1049231252}
+  m_GameObject: {fileID: 1290385672}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 3a5c9d521e5ef4759a8246a07d52221e, type: 3}
@@ -172,13 +172,13 @@ MonoBehaviour:
   DecisionPeriod: 5
   DecisionStep: 0
   TakeActionsBetweenDecisions: 1
---- !u!114 &1049231255
+--- !u!114 &1290385675
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1049231252}
+  m_GameObject: {fileID: 1290385672}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: f8d2f7db6cd24d43a9d8bb5dd0e30005, type: 3}
@@ -188,7 +188,7 @@ MonoBehaviour:
     maxStep: 0
   hasUpgradedFromAgentParameters: 1
   MaxStep: 0
-  perception: {fileID: 1049231258}
+  perception: {fileID: 1290385678}
   deploymentMode: 1
   useScriptedExpert: 0
   followTarget: {fileID: 0}
@@ -223,13 +223,13 @@ MonoBehaviour:
   terminalCrashPenalty: 2.5
   minimumControlAuthority: 0.4
   impactCooldownSeconds: 0.5
---- !u!114 &1049231256
+--- !u!114 &1290385676
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1049231252}
+  m_GameObject: {fileID: 1290385672}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 132e1194facb64429b007ea1edf562d0, type: 3}
@@ -240,13 +240,13 @@ MonoBehaviour:
   m_Grayscale: 1
   m_ObservationStacks: 1
   m_Compression: 0
---- !u!114 &1049231257
+--- !u!114 &1290385677
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1049231252}
+  m_GameObject: {fileID: 1290385672}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 5d1c4e0b1822b495aa52bc52839ecb30, type: 3}
@@ -271,13 +271,13 @@ MonoBehaviour:
   m_UseChildActuators: 1
   m_DeterministicInference: 0
   m_ObservableAttributeHandling: 0
---- !u!114 &1049231258
+--- !u!114 &1290385678
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1049231252}
+  m_GameObject: {fileID: 1290385672}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 702bff772e834da4a812307c229980c4, type: 3}
@@ -314,32 +314,33 @@ MonoBehaviour:
   detectionHeightJitterFraction: 0.05
   autoLockTarget: 0
   reidModel: {fileID: 5022602860645237092, guid: 658060f26cf8b98dca33cbebfc647e33, type: 3}
---- !u!114 &1049231259
+--- !u!114 &1290385679
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1049231252}
+  m_GameObject: {fileID: 1290385672}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4f4a16f3781b103dfa02ac03c986c610, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ArDroneFollowController
   droneAddress: 192.168.1.1
-  perception: {fileID: 1049231258}
+  perception: {fileID: 1290385678}
   shadowMode: 1
   hoverAfterTargetLostSeconds: 1.5
   maxAltitudeMeters: 2.5
-  landBelowBatteryPercent: 15
+  warnBelowBatteryPercent: 25
+  landBelowBatteryPercent: 12
   landAfterLinkLostSeconds: 1
---- !u!4 &1049231260
+--- !u!4 &1290385680
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1049231252}
+  m_GameObject: {fileID: 1290385672}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -348,7 +349,7 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!1 &2053409157
+--- !u!1 &1957587739
 GameObject:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -356,8 +357,8 @@ GameObject:
   m_PrefabAsset: {fileID: 0}
   serializedVersion: 6
   m_Component:
-  - component: {fileID: 2053409159}
-  - component: {fileID: 2053409158}
+  - component: {fileID: 1957587741}
+  - component: {fileID: 1957587740}
   m_Layer: 0
   m_Name: UI Camera
   m_TagString: Untagged
@@ -365,13 +366,13 @@ GameObject:
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
   m_IsActive: 1
---- !u!20 &2053409158
+--- !u!20 &1957587740
 Camera:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2053409157}
+  m_GameObject: {fileID: 1957587739}
   m_Enabled: 1
   serializedVersion: 2
   m_ClearFlags: 2
@@ -416,13 +417,13 @@ Camera:
   m_OcclusionCulling: 1
   m_StereoConvergence: 10
   m_StereoSeparation: 0.022
---- !u!4 &2053409159
+--- !u!4 &1957587741
 Transform:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 2053409157}
+  m_GameObject: {fileID: 1957587739}
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
@@ -435,5 +436,5 @@ Transform:
 SceneRoots:
   m_ObjectHideFlags: 0
   m_Roots:
-  - {fileID: 2053409159}
-  - {fileID: 1049231260}
+  - {fileID: 1957587741}
+  - {fileID: 1290385680}

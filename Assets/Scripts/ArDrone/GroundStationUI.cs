@@ -57,6 +57,7 @@ public sealed class GroundStationUI : MonoBehaviour
         DrawTargetBox(video);
         DrawDepth(unit);
         DrawTelemetry(unit);
+        DrawBanners(unit);
         DrawButtons(unit);
         HandleTap(video);
     }
@@ -126,6 +127,31 @@ public sealed class GroundStationUI : MonoBehaviour
         var panel = new Rect(unit * 0.3f, unit * 0.3f, Screen.width * 0.6f, unit * 3.2f);
         GUI.DrawTexture(panel, _panelTexture);
         GUI.Label(new Rect(panel.x + unit * 0.3f, panel.y + unit * 0.15f, panel.width, panel.height), text, _label);
+    }
+
+    void DrawBanners(float unit)
+    {
+        if (drone == null)
+            return;
+
+        // Shadow mode looks exactly like a normal flight (take-off works, the drone hovers), so say it loudly.
+        float y = unit * 3.9f;
+        if (drone.shadowMode)
+            DrawBanner(unit, ref y, "SHADOW – KI STEUERT NICHT (Drohne hovert nur)", new Color(0.9f, 0.45f, 0f, 0.9f));
+        if (drone.BatteryLow)
+            DrawBanner(unit, ref y, $"AKKU {drone.Navdata.battery:F0}% – Notlandung bei {drone.landBelowBatteryPercent}%", new Color(0.85f, 0.1f, 0.1f, 0.9f));
+    }
+
+    void DrawBanner(float unit, ref float y, string text, Color color)
+    {
+        Color previous = GUI.color;
+        GUI.color = color;
+        var rect = new Rect(unit * 0.3f, y, Screen.width * 0.6f, unit * 1.3f);
+        GUI.DrawTexture(rect, Texture2D.whiteTexture);
+        GUI.color = Color.white;
+        GUI.Label(new Rect(rect.x + unit * 0.3f, rect.y + unit * 0.2f, rect.width, rect.height), text, _label);
+        GUI.color = previous;
+        y += unit * 1.4f;
     }
 
     void DrawButtons(float unit)

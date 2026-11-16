@@ -61,7 +61,11 @@ public final class ScreenRecorder {
         protected void onCreate(Bundle state) {
             super.onCreate(state);
             MediaProjectionManager manager = (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
-            startActivityForResult(manager.createScreenCaptureIntent(), REQUEST);
+            // Android 14+: ask for the whole default display directly instead of the single-app picker.
+            Intent request = Build.VERSION.SDK_INT >= 34
+                ? manager.createScreenCaptureIntent(android.media.projection.MediaProjectionConfig.createConfigForDefaultDisplay())
+                : manager.createScreenCaptureIntent();
+            startActivityForResult(request, REQUEST);
         }
 
         @Override
